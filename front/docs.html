@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ドキュメント - AI Chat Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .docs-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            min-height: 100vh;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 18px;
+        }
+
+        .nav-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        .nav-link {
+            text-decoration: none;
+            color: #666;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: #e9ecef;
+            color: #4a90e2;
+        }
+
+        .nav-link.active {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .docs-content {
+            display: flex;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            border-right: 1px solid #e9ecef;
+            min-height: calc(100vh - 150px);
+            padding: 30px 0;
+        }
+
+        .sidebar-section {
+            margin-bottom: 30px;
+        }
+
+        .sidebar-title {
+            padding: 0 30px 15px;
+            font-weight: 700;
+            color: #333;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-item {
+            display: block;
+            padding: 10px 30px;
+            color: #666;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            background: #e9ecef;
+            color: #4a90e2;
+            border-left-color: #4a90e2;
+        }
+
+        .sidebar-item.active {
+            background: #e6f3ff;
+            color: #4a90e2;
+            border-left-color: #4a90e2;
+            font-weight: 600;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 40px;
+            max-width: calc(100% - 300px);
+        }
+
+        .doc-section {
+            margin-bottom: 50px;
+        }
+
+        .doc-section h2 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 20px;
+            border-bottom: 3px solid #4a90e2;
+            padding-bottom: 10px;
+        }
+
+        .doc-section h3 {
+            color: #444;
+            font-size: 22px;
+            margin: 30px 0 15px;
+        }
+
+        .doc-section h4 {
+            color: #555;
+            font-size: 18px;
+            margin: 20px 0 10px;
+        }
+
+        .doc-section p {
+            color: #666;
+            margin-bottom: 15px;
+            text-align: justify;
+        }
+
+        .doc-section ul, .doc-section ol {
+            margin: 15px 0 15px 30px;
+            color: #666;
+        }
+
+        .doc-section li {
+            margin-bottom: 8px;
+        }
+
+        .code-block {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 14px;
+            color: #333;
+            overflow-x: auto;
+        }
+
+        .highlight-box {
+            background: #e6f3ff;
+            border-left: 4px solid #4a90e2;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .highlight-box.warning {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+        }
+
+        .highlight-box.success {
+            background: #d1edff;
+            border-left-color: #28a745;
+        }
+
+        .format-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .format-table th,
+        .format-table td {
+            padding: 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .format-table th {
+            background: #4a90e2;
+            color: white;
+            font-weight: 600;
+        }
+
+        .format-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .example-card {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 25px;
+            margin: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .example-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .tag {
+            display: inline-block;
+            background: #e9ecef;
+            color: #495057;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin: 2px;
+            font-weight: 500;
+        }
+
+        .tag.supported {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .tag.recommended {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        @media (max-width: 768px) {
+            .docs-content {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+                border-right: none;
+                border-bottom: 1px solid #e9ecef;
+            }
+            
+            .main-content {
+                max-width: 100%;
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="docs-container">
+        <div class="header">
+            <h1>📚 ドキュメント</h1>
+            <p>AI Chat Bot 情報アップロードガイド</p>
+        </div>
+
+        <div class="nav-bar">
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">チャット</a>
+                <a href="upload.html" class="nav-link">アップロード</a>
+                <a href="docs.html" class="nav-link active">ドキュメント</a>
+            </div>
+        </div>
+
+        <div class="docs-content">
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-title">📋 基本情報</div>
+                    <a href="#overview" class="sidebar-item">概要</a>
+                    <a href="#quick-start" class="sidebar-item">クイックスタート</a>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-title">📁 アップロード方法</div>
+                    <a href="#manual-input" class="sidebar-item">手動入力</a>
+                    <a href="#file-upload" class="sidebar-item">ファイルアップロード</a>
+                    <a href="#url-fetch" class="sidebar-item">URL取得</a>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-title">📄 ファイル形式</div>
+                    <a href="#supported-formats" class="sidebar-item">対応形式一覧</a>
+                    <a href="#format-details" class="sidebar-item">形式詳細</a>
+                    <a href="#best-practices" class="sidebar-item">ベストプラクティス</a>
+                </div>
+                
+                <div class="sidebar-section">
+                    <div class="sidebar-title">🔧 高度な設定</div>
+                    <a href="#metadata" class="sidebar-item">メタデータ</a>
+                    <a href="#examples" class="sidebar-item">サンプル</a>
+                    <a href="#troubleshooting" class="sidebar-item">トラブルシューティング</a>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <section id="overview" class="doc-section">
+                    <h2>📖 概要</h2>
+                    <p>AI Chat Botは、アップロードした情報を基にRAG（Retrieval-Augmented Generation）技術を使用して、より正確で具体的な回答を提供します。</p>
+                    
+                    <div class="highlight-box">
+                        <strong>🎯 主な機能</strong>
+                        <ul>
+                            <li>多様な形式での情報アップロード</li>
+                            <li>ベクトル検索による高精度な情報取得</li>
+                            <li>コンテキストを考慮した回答生成</li>
+                            <li>リアルタイムな知識ベース更新</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section id="quick-start" class="doc-section">
+                    <h2>🚀 クイックスタート</h2>
+                    <h3>1. 最も簡単な方法：手動入力</h3>
+                    <ol>
+                        <li><a href="upload.html">アップロードページ</a>にアクセス</li>
+                        <li>「手動で情報を入力」セクションを開く</li>
+                        <li>タイトルと内容を入力</li>
+                        <li>「情報を保存」ボタンをクリック</li>
+                    </ol>
+
+                    <div class="example-card">
+                        <div class="example-title">📝 入力例</div>
+                        <div class="code-block">
+タイトル: Pythonの基本文法
+内容: Pythonでは、変数の定義に型宣言は不要です。
+例: name = "太郎"、age = 25
+インデントでコードブロックを表現します。
+                        </div>
+                    </div>
+                </section>
+
+                <section id="manual-input" class="doc-section">
+                    <h2>✏️ 手動入力</h2>
+                    <p>最も直接的で確実な方法です。構造化された情報を正確に登録できます。</p>
+                    
+                    <h3>必須フィールド</h3>
+                    <ul>
+                        <li><strong>タイトル</strong>: 情報を識別するための見出し</li>
+                        <li><strong>内容</strong>: 実際の情報・詳細</li>
+                    </ul>
+                    
+                    <h3>任意フィールド</h3>
+                    <ul>
+                        <li><strong>カテゴリ</strong>: 一般情報、技術情報、ビジネス情報、FAQ、手順・プロセス</li>
+                        <li><strong>タグ</strong>: カンマ区切りでキーワードを設定</li>
+                    </ul>
+
+                    <div class="highlight-box success">
+                        <strong>💡 効果的な入力のコツ</strong>
+                        <ul>
+                            <li>タイトルは検索しやすい具体的な名前を付ける</li>
+                            <li>内容は構造化して記述する（見出し、箇条書き等）</li>
+                            <li>関連するキーワードをタグに含める</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section id="file-upload" class="doc-section">
+                    <h2>📁 ファイルアップロード</h2>
+                    <p>既存の文書ファイルを直接アップロードして知識ベースに追加できます。</p>
+                    
+                    <h3>アップロード手順</h3>
+                    <ol>
+                        <li>アップロード領域にファイルをドラッグ&ドロップ</li>
+                        <li>または、クリックしてファイル選択ダイアログを開く</li>
+                        <li>複数ファイルの選択が可能</li>
+                        <li>「ファイルをアップロード」ボタンでアップロード開始</li>
+                    </ol>
+
+                    <div class="highlight-box warning">
+                        <strong>⚠️ 注意事項</strong>
+                        <ul>
+                            <li>ファイルサイズは1ファイル10MB以下を推奨</li>
+                            <li>パスワード保護されたファイルは対応していません</li>
+                            <li>画像のみのPDFは認識できない場合があります</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section id="url-fetch" class="doc-section">
+                    <h2>🌐 URL取得</h2>
+                    <p>WebページのコンテンツをURLから直接取得して知識ベースに追加します。</p>
+                    
+                    <h3>対応サイト</h3>
+                    <ul>
+                        <li>一般的なWebサイト</li>
+                        <li>ブログ記事</li>
+                        <li>ニュースサイト</li>
+                        <li>技術文書サイト</li>
+                    </ul>
+
+                    <div class="example-card">
+                        <div class="example-title">🔗 URL例</div>
+                        <div class="code-block">
+✅ 良い例:
+https://qiita.com/example/items/python-basics
+https://zenn.dev/example/articles/react-tutorial
+https://docs.python.org/ja/3/tutorial/
+
+❌ 対応できない例:
+https://private-site.com/login-required
+https://pdf-download-link.com/file.pdf
+                        </div>
+                    </div>
+                </section>
+
+                <section id="supported-formats" class="doc-section">
+                    <h2>📄 対応ファイル形式</h2>
+                    
+                    <table class="format-table">
+                        <thead>
+                            <tr>
+                                <th>形式</th>
+                                <th>拡張子</th>
+                                <th>説明</th>
+                                <th>推奨度</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><strong>Plain Text</strong></td>
+                                <td>.txt</td>
+                                <td>プレーンテキスト（UTF-8推奨）</td>
+                                <td><span class="tag recommended">高</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Markdown</strong></td>
+                                <td>.md</td>
+                                <td>マークダウン形式の文書</td>
+                                <td><span class="tag recommended">高</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>PDF</strong></td>
+                                <td>.pdf</td>
+                                <td>テキストが含まれるPDF文書</td>
+                                <td><span class="tag supported">中</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Word文書</strong></td>
+                                <td>.docx</td>
+                                <td>Microsoft Word文書</td>
+                                <td><span class="tag supported">中</span></td>
+                            </tr>
+                            <tr>
+                                <td><strong>JSON</strong></td>
+                                <td>.json</td>
+                                <td>構造化データ</td>
+                                <td><span class="tag supported">中</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section id="format-details" class="doc-section">
+                    <h2>📋 形式詳細</h2>
+                    
+                    <h3>📝 テキストファイル (.txt)</h3>
+                    <p>最もシンプルで確実な形式です。UTF-8エンコーディングを推奨します。</p>
+                    <div class="example-card">
+                        <div class="example-title">サンプル構造</div>
+                        <div class="code-block">
+タイトル: Python基礎知識
+
+概要:
+Pythonは初心者にも優しいプログラミング言語です。
+
+特徴:
+- シンプルな文法
+- 豊富なライブラリ
+- クロスプラットフォーム対応
+
+基本文法:
+変数定義: name = "value"
+条件分岐: if condition:
+                        </div>
+                    </div>
+
+                    <h3>📖 Markdownファイル (.md)</h3>
+                    <p>見出し、リスト、コードブロックなどの構造が維持されます。</p>
+                    <div class="example-card">
+                        <div class="example-title">Markdownサンプル</div>
+                        <div class="code-block">
+# API仕様書
+
+## 概要
+RESTful APIの使用方法について説明します。
+
+### エンドポイント
+- `GET /api/users` - ユーザー一覧取得
+- `POST /api/users` - ユーザー作成
+
+```python
+import requests
+response = requests.get('/api/users')
+```
+                        </div>
+                    </div>
+
+                    <h3>📄 PDFファイル (.pdf)</h3>
+                    <p>テキスト情報を含むPDFから内容を抽出します。</p>
+                    <div class="highlight-box warning">
+                        <strong>📋 制限事項</strong>
+                        <ul>
+                            <li>画像のみのPDFは処理できません</li>
+                            <li>複雑なレイアウトは正しく抽出されない場合があります</li>
+                            <li>パスワード保護されたPDFは対応していません</li>
+                        </ul>
+                    </div>
+
+                    <h3>📊 JSONファイル (.json)</h3>
+                    <p>構造化されたデータを扱う場合に適しています。</p>
+                    <div class="example-card">
+                        <div class="example-title">JSON構造例</div>
+                        <div class="code-block">
+{
+  "title": "商品情報",
+  "data": [
+    {
+      "name": "ノートPC",
+      "price": 80000,
+      "specs": {
+        "cpu": "Intel i7",
+        "memory": "16GB",
+        "storage": "512GB SSD"
+      }
+    }
+  ]
+}
+                        </div>
+                    </div>
+                </section>
+
+                <section id="best-practices" class="doc-section">
+                    <h2>💡 ベストプラクティス</h2>
+                    
+                    <h3>🎯 効果的な情報構造</h3>
+                    <ul>
+                        <li><strong>明確な見出し</strong>: 階層的な見出しで内容を整理</li>
+                        <li><strong>キーワードの適切な配置</strong>: 検索されやすい単語を含める</li>
+                        <li><strong>具体例の提供</strong>: 理論だけでなく実例も含める</li>
+                        <li><strong>関連情報の整理</strong>: 関連する項目は近くに配置</li>
+                    </ul>
+
+                    <h3>📊 推奨ファイル構成</h3>
+                    <div class="example-card">
+                        <div class="example-title">理想的な文書構造</div>
+                        <div class="code-block">
+# メインタイトル
+
+## 概要・要約
+簡潔な説明
+
+## 詳細内容
+### サブセクション1
+具体的な説明と例
+
+### サブセクション2
+手順や方法
+
+## まとめ・補足
+重要なポイントの再確認
+                        </div>
+                    </div>
+
+                    <div class="highlight-box success">
+                        <strong>🏆 品質向上のポイント</strong>
+                        <ul>
+                            <li>1つのファイルは1つのトピックに集中</li>
+                            <li>専門用語には説明を併記</li>
+                            <li>例文・サンプルコードを豊富に含める</li>
+                            <li>定期的な内容の見直しと更新</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <section id="metadata" class="doc-section">
+                    <h2>🏷️ メタデータ</h2>
+                    <p>アップロードした情報には自動的にメタデータが付与され、検索精度の向上に役立ちます。</p>
+                    
+                    <h3>自動付与される情報</h3>
+                    <ul>
+                        <li>アップロード日時</li>
+                        <li>ファイル形式</li>
+                        <li>文書の長さ</li>
+                        <li>推定される主要キーワード</li>
+                    </ul>
+
+                    <h3>ユーザー指定可能な情報</h3>
+                    <ul>
+                        <li>カテゴリ分類</li>
+                        <li>タグ（キーワード）</li>
+                        <li>重要度レベル</li>
+                        <li>更新頻度</li>
+                    </ul>
+                </section>
+
+                <section id="examples" class="doc-section">
+                    <h2>📚 サンプル</h2>
+                    
+                    <h3>💼 ビジネス文書の例</h3>
+                    <div class="example-card">
+                        <div class="example-title">会議議事録テンプレート</div>
+                        <div class="code-block">
+# 週次プロジェクト会議 議事録
+
+**日時**: 2024年1月15日 14:00-15:00
+**参加者**: 田中PM、佐藤エンジニア、鈴木デザイナー
+
+## アジェンダ
+1. 進捗報告
+2. 課題確認
+3. 来週の予定
+
+## 決定事項
+- API設計を来週火曜までに完成
+- UIモックアップの修正対応
+- 次回会議は1/22（月）14:00～
+
+## アクションアイテム
+- [ ] 田中: 要件定義書の更新
+- [ ] 佐藤: テスト環境の構築
+- [ ] 鈴木: デザインガイドラインの作成
+                        </div>
+                    </div>
+
+                    <h3>🔧 技術文書の例</h3>
+                    <div class="example-card">
+                        <div class="example-title">API仕様書サンプル</div>
+                        <div class="code-block">
+# ユーザー管理API
+
+## 概要
+ユーザー情報の取得、作成、更新、削除を行うRESTful APIです。
+
+## エンドポイント
+
+### GET /api/users
+ユーザー一覧を取得します。
+
+**パラメータ**:
+- page (optional): ページ番号
+- limit (optional): 取得件数
+
+**レスポンス例**:
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "name": "田中太郎",
+      "email": "tanaka@example.com"
+    }
+  ],
+  "total": 100,
+  "page": 1
+}
+```
+
+### POST /api/users
+新しいユーザーを作成します。
+
+**必須パラメータ**:
+- name: ユーザー名
+- email: メールアドレス
+                        </div>
+                    </div>
+                </section>
+
+                <section id="troubleshooting" class="doc-section">
+                    <h2>🔧 トラブルシューティング</h2>
+                    
+                    <h3>よくある問題と解決方法</h3>
+                    
+                    <h4>❓ ファイルがアップロードできない</h4>
+                    <ul>
+                        <li>ファイルサイズが10MBを超えていないか確認</li>
+                        <li>対応形式（.txt, .pdf, .docx, .md, .json）であるか確認</li>
+                        <li>ファイルが破損していないか確認</li>
+                        <li>ブラウザを再起動して再試行</li>
+                    </ul>
+
+                    <h4>❓ PDFの内容が正しく認識されない</h4>
+                    <ul>
+                        <li>画像のみのPDFではないか確認</li>
+                        <li>テキスト選択可能なPDFであるか確認</li>
+                        <li>パスワード保護を解除してから再アップロード</li>
+                        <li>可能であればテキスト形式で保存し直す</li>
+                    </ul>
+
+                    <h4>❓ URLから情報を取得できない</h4>
+                    <ul>
+                        <li>URLが正しく入力されているか確認</li>
+                        <li>ログインが必要なページでないか確認</li>
+                        <li>JavaScriptで動的生成されるコンテンツは取得できません</li>
+                        <li>ページの内容をコピーして手動入力を試行</li>
+                    </ul>
+
+                    <h4>❓ 検索で期待した結果が出ない</h4>
+                    <ul>
+                        <li>キーワードを変えて検索してみる</li>
+                        <li>類似する表現や同義語で試行</li>
+                        <li>情報のタイトルや見出しを確認</li>
+                        <li>情報が正しくアップロードされているか確認</li>
+                    </ul>
+
+                    <div class="highlight-box">
+                        <strong>🆘 サポートが必要な場合</strong>
+                        <p>上記で解決しない問題がある場合は、以下の情報を含めてお問い合わせください：</p>
+                        <ul>
+                            <li>発生した問題の詳細</li>
+                            <li>エラーメッセージ（ある場合）</li>
+                            <li>使用しているブラウザとバージョン</li>
+                            <li>アップロードしようとしたファイルの種類とサイズ</li>
+                        </ul>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // サイドバーのアクティブ状態管理
+        document.addEventListener('DOMContentLoaded', function() {
+            const sidebarItems = document.querySelectorAll('.sidebar-item');
+            const sections = document.querySelectorAll('.doc-section');
+            
+            // スクロール時のアクティブセクション更新
+            function updateActiveSection() {
+                let current = '';
+                sections.forEach(section => {
+                    const sectionTop = section.offsetTop - 100;
+                    const sectionHeight = section.offsetHeight;
+                    if (pageYOffset >= sectionTop && pageYOffset < sectionTop + sectionHeight) {
+                        current = section.getAttribute('id');
+                    }
+                });
+                
+                sidebarItems.forEach(item => {
+                    item.classList.remove('active');
+                    if (item.getAttribute('href') === '#' + current) {
+                        item.classList.add('active');
+                    }
+                });
+            }
+            
+            // 初期化
+            updateActiveSection();
+            
+            // スクロールイベント
+            window.addEventListener('scroll', updateActiveSection);
+            
+            // クリック時のスムーススクロール
+            sidebarItems.forEach(item => {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const targetId = this.getAttribute('href').substring(1);
+                    const targetElement = document.getElementById(targetId);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

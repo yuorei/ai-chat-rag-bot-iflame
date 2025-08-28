@@ -1,0 +1,704 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>情報アップロード - AI Chat Bot</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .upload-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #4a90e2, #357abd);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .nav-bar {
+            background: #f8f9fa;
+            padding: 15px 30px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 20px;
+        }
+
+        .nav-link {
+            text-decoration: none;
+            color: #666;
+            padding: 8px 16px;
+            border-radius: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: #e9ecef;
+            color: #4a90e2;
+        }
+
+        .nav-link.active {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .upload-content {
+            padding: 40px;
+        }
+
+        .upload-method {
+            margin-bottom: 40px;
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .method-header {
+            background: #f8f9fa;
+            padding: 20px;
+            border-bottom: 1px solid #e9ecef;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.3s ease;
+        }
+
+        .method-header:hover {
+            background: #e9ecef;
+        }
+
+        .method-header h3 {
+            color: #333;
+            font-size: 18px;
+        }
+
+        .method-header .toggle-icon {
+            font-size: 20px;
+            color: #666;
+            transition: transform 0.3s ease;
+        }
+
+        .method-header.active .toggle-icon {
+            transform: rotate(180deg);
+        }
+
+        .method-content {
+            padding: 30px;
+            display: none;
+        }
+
+        .method-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group textarea,
+        .form-group select {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #4a90e2;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .file-upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload-area:hover {
+            border-color: #4a90e2;
+            background: #f0f7ff;
+        }
+
+        .file-upload-area.dragover {
+            border-color: #4a90e2;
+            background: #e6f3ff;
+        }
+
+        .file-icon {
+            font-size: 48px;
+            color: #ccc;
+            margin-bottom: 15px;
+        }
+
+        .file-upload-text {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .file-upload-hint {
+            font-size: 14px;
+            color: #999;
+        }
+
+        .selected-files {
+            margin-top: 20px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+        }
+
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+
+        .remove-file {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #357abd;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e9ecef;
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .progress-bar.show {
+            display: block;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #4a90e2;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: #d1edff;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+
+        .format-examples {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .format-examples h4 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .format-examples ul {
+            list-style-type: disc;
+            margin-left: 20px;
+        }
+
+        .format-examples li {
+            margin-bottom: 8px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="upload-container">
+        <div class="header">
+            <h1>情報アップロード</h1>
+            <p>AIチャットボットの知識ベースに情報を追加します</p>
+        </div>
+
+        <div class="nav-bar">
+            <div class="nav-links">
+                <a href="index.html" class="nav-link">チャット</a>
+                <a href="upload.html" class="nav-link active">アップロード</a>
+                <a href="docs.html" class="nav-link">ドキュメント</a>
+            </div>
+        </div>
+
+        <div class="upload-content">
+            <div class="alert alert-success" id="successAlert"></div>
+            <div class="alert alert-error" id="errorAlert"></div>
+
+            <!-- 手動入力方式 -->
+            <div class="upload-method">
+                <div class="method-header" onclick="toggleMethod('manual')">
+                    <h3>📝 手動で情報を入力</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="method-content" id="manual-content">
+                    <form id="manual-form">
+                        <div class="form-group">
+                            <label for="manual-title">タイトル *</label>
+                            <input type="text" id="manual-title" required placeholder="情報のタイトルを入力してください">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manual-category">カテゴリ</label>
+                            <select id="manual-category">
+                                <option value="">カテゴリを選択してください</option>
+                                <option value="general">一般情報</option>
+                                <option value="technical">技術情報</option>
+                                <option value="business">ビジネス情報</option>
+                                <option value="FAQ">よくある質問</option>
+                                <option value="procedure">手順・プロセス</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manual-content-text">内容 *</label>
+                            <textarea id="manual-content-text" required placeholder="情報の詳細内容を入力してください..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="manual-tags">タグ（カンマ区切り）</label>
+                            <input type="text" id="manual-tags" placeholder="例: AI, 機械学習, Python">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            💾 情報を保存
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- ファイルアップロード方式 -->
+            <div class="upload-method">
+                <div class="method-header" onclick="toggleMethod('file')">
+                    <h3>📁 ファイルをアップロード</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="method-content" id="file-content">
+                    <div class="file-upload-area" id="fileUploadArea">
+                        <div class="file-icon">📄</div>
+                        <div class="file-upload-text">ファイルをドラッグ&ドロップまたはクリックして選択</div>
+                        <div class="file-upload-hint">対応形式: TXT, PDF, DOCX, MD, JSON</div>
+                        <input type="file" id="fileInput" multiple accept=".txt,.pdf,.docx,.md,.json" style="display: none;">
+                    </div>
+                    
+                    <div class="selected-files" id="selectedFiles"></div>
+                    
+                    <div class="progress-bar" id="progressBar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    
+                    <div style="margin-top: 20px;">
+                        <button class="btn btn-primary" id="uploadBtn" onclick="uploadFiles()" disabled>
+                            🚀 ファイルをアップロード
+                        </button>
+                        <button class="btn btn-secondary" onclick="clearFiles()">
+                            🗑️ クリア
+                        </button>
+                    </div>
+
+                    <div class="format-examples">
+                        <h4>📋 対応ファイル形式の詳細</h4>
+                        <ul>
+                            <li><strong>TXT</strong>: プレーンテキストファイル（UTF-8推奨）</li>
+                            <li><strong>PDF</strong>: テキストが含まれるPDFファイル</li>
+                            <li><strong>DOCX</strong>: Microsoft Word文書</li>
+                            <li><strong>MD</strong>: Markdownファイル</li>
+                            <li><strong>JSON</strong>: 構造化されたJSONデータ</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- URL入力方式 -->
+            <div class="upload-method">
+                <div class="method-header" onclick="toggleMethod('url')">
+                    <h3>🌐 URLから情報を取得</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="method-content" id="url-content">
+                    <form id="url-form">
+                        <div class="form-group">
+                            <label for="url-input">URL *</label>
+                            <input type="url" id="url-input" required placeholder="https://example.com/article">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="url-title">タイトル（任意）</label>
+                            <input type="text" id="url-title" placeholder="自動取得されない場合は手動入力">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">
+                            🔗 URLから取得
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'http://localhost:8000';
+        let selectedFiles = [];
+
+        // メソッドの開閉
+        function toggleMethod(methodId) {
+            const header = document.querySelector(`[onclick="toggleMethod('${methodId}')"]`);
+            const content = document.getElementById(`${methodId}-content`);
+            
+            header.classList.toggle('active');
+            content.classList.toggle('active');
+        }
+
+        // 手動入力フォーム
+        document.getElementById('manual-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const title = document.getElementById('manual-title').value;
+            const content = document.getElementById('manual-content-text').value;
+            const category = document.getElementById('manual-category').value;
+            const tags = document.getElementById('manual-tags').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/add_knowledge`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        title, 
+                        content: content,
+                        category,
+                        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('情報が正常に保存されました！', 'success');
+                    document.getElementById('manual-form').reset();
+                } else {
+                    showAlert('エラー: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('通信エラー: ' + error.message, 'error');
+            }
+        });
+
+        // ファイルアップロード関連
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        fileUploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileUploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.add('dragover');
+        });
+
+        fileUploadArea.addEventListener('dragleave', () => {
+            fileUploadArea.classList.remove('dragover');
+        });
+
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUploadArea.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (!selectedFiles.find(f => f.name === file.name)) {
+                    selectedFiles.push(file);
+                }
+            });
+            updateFileList();
+        }
+
+        function updateFileList() {
+            const container = document.getElementById('selectedFiles');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            if (selectedFiles.length === 0) {
+                container.innerHTML = '';
+                uploadBtn.disabled = true;
+                return;
+            }
+            
+            uploadBtn.disabled = false;
+            
+            container.innerHTML = selectedFiles.map((file, index) => `
+                <div class="file-item">
+                    <div class="file-info">
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-size">(${formatFileSize(file.size)})</span>
+                    </div>
+                    <button class="remove-file" onclick="removeFile(${index})">削除</button>
+                </div>
+            `).join('');
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updateFileList();
+        }
+
+        function clearFiles() {
+            selectedFiles = [];
+            fileInput.value = '';
+            updateFileList();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        async function uploadFiles() {
+            if (selectedFiles.length === 0) return;
+            
+            const progressBar = document.getElementById('progressBar');
+            const progressFill = document.getElementById('progressFill');
+            const uploadBtn = document.getElementById('uploadBtn');
+            
+            uploadBtn.disabled = true;
+            progressBar.classList.add('show');
+            
+            try {
+                let extractedTexts = [];
+                
+                for (let i = 0; i < selectedFiles.length; i++) {
+                    const file = selectedFiles[i];
+                    const progress = ((i + 1) / selectedFiles.length) * 100;
+                    
+                    progressFill.style.width = progress + '%';
+                    
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    
+                    const response = await fetch(`${API_BASE}/api/upload_file`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (!data.success) {
+                        throw new Error(`${file.name}: ${data.error}`);
+                    }
+                    
+                    // 抽出されたテキストを保存
+                    if (data.extracted_text) {
+                        extractedTexts.push({
+                            filename: file.name,
+                            text: data.extracted_text
+                        });
+                    }
+                }
+                
+                let successMessage = 'すべてのファイルが正常にアップロードされました！';
+                
+                // 抽出されたテキストを表示
+                if (extractedTexts.length > 0) {
+                    successMessage += '\n\n抽出されたテキスト:';
+                    extractedTexts.forEach(item => {
+                        successMessage += `\n\n[${item.filename}]\n${item.text}`;
+                    });
+                }
+                
+                showAlert(successMessage, 'success');
+                clearFiles();
+                
+            } catch (error) {
+                showAlert('アップロードエラー: ' + error.message, 'error');
+            }
+            
+            progressBar.classList.remove('show');
+            uploadBtn.disabled = false;
+        }
+
+        // URL取得フォーム
+        document.getElementById('url-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const url = document.getElementById('url-input').value;
+            const title = document.getElementById('url-title').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/fetch_url`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url, title })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAlert('URLから情報を取得して保存しました！', 'success');
+                    document.getElementById('url-form').reset();
+                } else {
+                    showAlert('エラー: ' + data.error, 'error');
+                }
+            } catch (error) {
+                showAlert('通信エラー: ' + error.message, 'error');
+            }
+        });
+
+        // アラート表示
+        function showAlert(message, type) {
+            const alertElement = document.getElementById(type === 'success' ? 'successAlert' : 'errorAlert');
+            alertElement.textContent = message;
+            alertElement.classList.add('show');
+            
+            setTimeout(() => {
+                alertElement.classList.remove('show');
+            }, 5000);
+        }
+
+        // 初期状態で手動入力を開く
+        toggleMethod('manual');
+    </script>
+</body>
+</html>
