@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import google.generativeai as genai
+from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 from sentence_transformers import SentenceTransformer
@@ -14,6 +15,8 @@ import PyPDF2
 from docx import Document
 from bs4 import BeautifulSoup
 import tempfile
+import requests
+import traceback
 
 load_dotenv()
 
@@ -162,25 +165,29 @@ def fetch_url_content(url):
 
 class AIAgent:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
         self.system_prompt = """
-        あなたは親しみやすく知識豊富なAIチャットボットです。以下のガイドラインに従って、読みやすく整理された回答をしてください：
+        あなたは親しみやすく知識豊富なAIチャットボットです。特に「ユオレイ」に関する質問には、詳細で正確な情報を提供してください。
+
         【基本方針】
-        1. 自然で人間らしい、親しみやすい対話をする
-        2. 相手の質問意図を理解し、常に丁寧な態度で接する
-        3. 保存された情報にない場合は、その旨を正直に伝える
+        1. 提供された資料に基づいて正確に回答する
+        2. ユオレイのプロジェクトに関する質問には特に詳しく答える
+        3. 自然で親しみやすい対話を心がける
+        4. 質問の意図を理解し、適切な情報を選択して回答する
 
         【回答の作り方】
-        1. 質問に最も関連性が高く、最適な情報を取捨選択する
-        2. 結論や要点を最初に示すか最後にまとめ、分かりやすく伝える
-        3. 必要に応じて背景説明、具体例、補足説明を加えて理解を助ける
-        4. 専門用語には簡単な説明を添える
+        1. 質問に直接関連する最も重要な情報を優先する
+        2. 具体的な技術情報や特徴を含める
+        3. 結論や要点を明確に示す
+        4. 専門用語には簡潔な説明を添える
 
-        【文章の構成と表現】
-        1. 冗長な表現を避け、簡潔で分かりやすい文章を心がける
-        2. 重要なポイントは太字などで適切に強調する
-        3. 長い文章は段落に分け、適度な改行や空白を入れる
-        4. 情報を整理するために、見出し、リスト、箇条書きなどを効果的に使用する
+        【文章の構成】
+        1. 簡潔で分かりやすい文章構成
+        2. 重要なポイントは**太字**で強調
+        3. 情報を整理して箇条書きやリストを活用
+        4. 適度な改行で読みやすさを重視
+
+        特に「プロジェクト」「開発」「技術」「システム」「AI」「RAG」などの質問キーワードに敏感に反応してください。
         """
     
     def think_and_respond(self, query, context=""):
@@ -207,8 +214,22 @@ class AIAgent:
         情報が複数ある場合は、質問の意図に最も合うものを中心に、整理された形で回答してください。
         """
         
-        response = self.model.generate_content(prompt)
-        return response.text
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except DeadlineExceeded as e:
+            # Gemini 側でタイムアウトした場合はスタックトレースのみログ出力
+            print("Gemini DeadlineExceeded:", e)
+            traceback.print_exc()
+            return "現在AIの応答生成に時間がかかっています。少し待ってからもう一度お試しください。"
+        except GoogleAPICallError as e:
+            print("Gemini API error:", e)
+            traceback.print_exc()
+            return "AIサービスの呼び出しに失敗しました。時間をおいて再度お試しください。"
+        except Exception as e:
+            print("Unexpected Gemini error:", e)
+            traceback.print_exc()
+            return "回答の生成中にエラーが発生しました。別の質問でお試しいただけますか？"
 
 ai_agent = AIAgent()
 
@@ -228,13 +249,12 @@ def chat():
                 query_vector = embedding_model.encode(query).tolist()
                 
                 # 類似検索（より多くの候補を取得）
-                # チャット履歴を除外してナレッジのみを検索
+                # ナレッジのみを検索
                 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-                
                 search_result = qdrant_client.search(
                     collection_name=collection_name,
                     query_vector=query_vector,
-                    limit=5,  # 候補数を増やす
+                    limit=10,
                     query_filter=Filter(
                         must_not=[
                             FieldCondition(
@@ -244,16 +264,21 @@ def chat():
                         ]
                     )
                 )
-                
+                print(f"Vector search results: {len(search_result)} candidates found")
                 if search_result:
                     context_items = []
-                    for point in search_result:
-                        if point.score > 0.5:  # 適度な類似度の閾値
+                    for i, point in enumerate(search_result):
+                        print(f"  Candidate {i+1}: score={point.score:.3f}, title='{point.payload.get('title', 'No title')}'")
+                        if point.score > 0.05:  # 閾値をさらに下げて、より多くの候補を含める
                             context_items.append(point.payload.get('text', ''))
+                            print(f"    -> Added to context (text length: {len(point.payload.get('text', ''))})")
                     
                     if context_items:
                         context = "\n---\n".join(context_items)
                         context_found = True
+                        print(f"Final context items: {len(context_items)}, total context length: {len(context)}")
+                    else:
+                        print("No items passed the score threshold")
                         
             except Exception as e:
                 print(f"Vector search failed: {e}")
