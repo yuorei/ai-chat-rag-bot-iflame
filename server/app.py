@@ -12,6 +12,7 @@ import time
 import uuid
 from werkzeug.utils import secure_filename
 import PyPDF2
+import pdfplumber
 from docx import Document
 from bs4 import BeautifulSoup
 import tempfile
@@ -85,6 +86,46 @@ init_qdrant()
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def normalize_pdf_text(raw_text: str) -> str:
+    """PDFで1文字ごとに改行されるパターンを緩和する"""
+    lines = raw_text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    normalized = []
+    short_buffer = []
+    
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if short_buffer:
+                normalized.append(''.join(short_buffer))
+                short_buffer = []
+            normalized.append('')
+            continue
+        
+        if len(stripped) <= 2:
+            short_buffer.append(stripped)
+        else:
+            if short_buffer:
+                normalized.append(''.join(short_buffer))
+                short_buffer = []
+            normalized.append(line.strip())
+    
+    if short_buffer:
+        normalized.append(''.join(short_buffer))
+    
+    # 連続した空行を1つにまとめる
+    cleaned = []
+    previous_blank = False
+    for line in normalized:
+        if not line:
+            if not previous_blank:
+                cleaned.append('')
+            previous_blank = True
+        else:
+            cleaned.append(line)
+            previous_blank = False
+    
+    return "\n".join(cleaned).strip()
+
 def extract_text_from_file(file_path, file_extension):
     """ファイルからテキストを抽出"""
     try:
@@ -102,12 +143,24 @@ def extract_text_from_file(file_path, file_extension):
                 return json.dumps(data, ensure_ascii=False, indent=2)
         
         elif file_extension == 'pdf':
-            text = ""
-            with open(file_path, 'rb') as f:
-                pdf_reader = PyPDF2.PdfReader(f)
-                for page in pdf_reader.pages:
-                    text += page.extract_text() + "\n"
-            return text
+            text_parts = []
+            try:
+                with pdfplumber.open(file_path) as pdf:
+                    for page in pdf.pages:
+                        page_text = page.extract_text(x_tolerance=1, y_tolerance=1)
+                        if page_text:
+                            text_parts.append(page_text)
+            except Exception as e:
+                print(f"pdfplumber failed ({e}), falling back to PyPDF2")
+                with open(file_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    for page in pdf_reader.pages:
+                        extracted = page.extract_text()
+                        if extracted:
+                            text_parts.append(extracted)
+            
+            text = "\n\n".join(text_parts).strip()
+            return normalize_pdf_text(text) if text else text
         
         elif file_extension == 'docx':
             doc = Document(file_path)
@@ -367,14 +420,25 @@ def upload_file():
             return jsonify({'error': 'ファイルが選択されていません'}), 400
         
         file = request.files['file']
-        if file.filename == '':
+        original_filename = file.filename
+        if original_filename == '':
             return jsonify({'error': 'ファイル名が空です'}), 400
         
-        if not allowed_file(file.filename):
+        if not allowed_file(original_filename):
             return jsonify({'error': '対応していないファイル形式です'}), 400
         
-        filename = secure_filename(file.filename)
-        file_extension = filename.rsplit('.', 1)[1].lower()
+        filename = secure_filename(original_filename)
+        _, ext = os.path.splitext(original_filename)
+        file_extension = ext.lower().lstrip('.')
+        
+        # secure_filename が拡張子を落とした場合に備えて補正
+        if not file_extension:
+            return jsonify({'error': 'ファイル拡張子を判別できませんでした'}), 400
+        
+        if not filename:
+            filename = f"uploaded_file.{file_extension}"
+        elif '.' not in filename:
+            filename = f"{filename}.{file_extension}"
         
         # 一時ファイルとして保存
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
