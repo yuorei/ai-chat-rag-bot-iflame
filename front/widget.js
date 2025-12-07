@@ -62,9 +62,15 @@
       return;
     }
 
+    // モバイル判定
+    const isMobile = window.innerWidth <= 768;
+
     // ---- ここから配置計算用の値 ----
     // ボタンのサイズ（直径）
-    const buttonSize = parseInt(dataset.buttonSize || '56', 10);
+    // デフォルトを少し大きめにして、絵文字と見た目を強調する
+    // モバイルではさらに大きくする
+    const defaultButtonSize = isMobile ? '72' : '64';
+    const buttonSize = parseInt(dataset.buttonSize || defaultButtonSize, 10);
     // ボタンの bottom（px）
     const buttonBottom = parseInt(dataset.buttonBottom || '20', 10);
     // ボタンと iframe の隙間
@@ -82,10 +88,10 @@
     iframe.id = 'iframe-widget-frame';
     iframe.src = `${widgetBase}/index.html?token=${encodeURIComponent(sessionToken)}&apiBase=${encodeURIComponent(apiBase)}`;
     iframe.style.position = 'fixed';
-    iframe.style.right = dataset.right || '20px';
+    iframe.style.right = dataset.right || (isMobile ? '10px' : '20px');
     iframe.style.bottom = iframeBottom + 'px'; // ★ ボタンより上に配置
-    iframe.style.width = dataset.width || '400px';
-    iframe.style.height = dataset.height || '600px';
+    iframe.style.width = dataset.width || (isMobile ? 'calc(100vw - 20px)' : '400px');
+    iframe.style.height = dataset.height || (isMobile ? 'calc(100vh - 150px)' : '600px');
     iframe.style.border = 'none';
     iframe.style.boxShadow = '0 15px 35px rgba(0,0,0,0.15)';
     iframe.style.borderRadius = '12px';
@@ -105,7 +111,7 @@
     toggleButton.style.border = 'none';
     toggleButton.style.background = dataset.buttonColor || '#4a90e2';
     toggleButton.style.color = '#fff';
-    toggleButton.style.fontSize = '24px';
+    toggleButton.style.fontSize = isMobile ? '32px' : '28px';
     toggleButton.style.cursor = 'pointer';
     toggleButton.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
     toggleButton.style.zIndex = '2147483647';
@@ -125,14 +131,16 @@
     messageBanner.style.gap = '12px';
     messageBanner.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
     messageBanner.style.zIndex = '2147483647';
-    messageBanner.style.maxWidth = '300px';
-    messageBanner.style.fontSize = '14px';
+    messageBanner.style.maxWidth = isMobile ? 'calc(100vw - 40px)' : '300px';
+    messageBanner.style.fontSize = isMobile ? '16px' : '15px';
     messageBanner.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    messageBanner.style.padding = isMobile ? '14px 18px' : '12px 16px';
 
     // バナーアイコン
     const bannerIcon = document.createElement('svg');
-    bannerIcon.style.width = '20px';
-    bannerIcon.style.height = '20px';
+    const iconSize = isMobile ? '28px' : '24px';
+    bannerIcon.style.width = iconSize;
+    bannerIcon.style.height = iconSize;
     bannerIcon.style.flexShrink = '0';
     bannerIcon.style.color = '#000';
     bannerIcon.setAttribute('viewBox', '0 0 24 24');
@@ -148,6 +156,7 @@
     bannerText.textContent = 'チャットで質問できます！';
     bannerText.style.flex = '1';
     bannerText.style.color = '#000';
+    bannerText.style.fontSize = isMobile ? '16px' : '15px';
 
     // バナーの閉じるボタン
     const bannerClose = document.createElement('button');
@@ -156,10 +165,11 @@
     bannerClose.style.border = 'none';
     bannerClose.style.color = '#000';
     bannerClose.style.cursor = 'pointer';
-    bannerClose.style.fontSize = '18px';
+    const closeSize = isMobile ? '28px' : '24px';
+    bannerClose.style.fontSize = isMobile ? '24px' : '20px';
     bannerClose.style.padding = '0';
-    bannerClose.style.width = '20px';
-    bannerClose.style.height = '20px';
+    bannerClose.style.width = closeSize;
+    bannerClose.style.height = closeSize;
     bannerClose.style.display = 'flex';
     bannerClose.style.alignItems = 'center';
     bannerClose.style.justifyContent = 'center';
