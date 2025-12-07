@@ -147,17 +147,17 @@
     </div>
 
     <script>
-        window.IFLAME_WIDGET_CONFIG = {
+        window.IFRAME_WIDGET_CONFIG = {
             apiBaseUrl: 'http://localhost:8000',
             widgetBaseUrl: 'http://localhost:3000'
         };
 
         const statusBox = document.getElementById('widgetStatus');
-        window.addEventListener('iflame-widget-ready', () => {
+        window.addEventListener('iframe-widget-ready', () => {
             statusBox.textContent = 'ウィジェットの読み込みに成功しました。右下のボタンからチャットを開いてください。';
             statusBox.classList.remove('error');
         });
-        window.addEventListener('iflame-widget-error', (event) => {
+        window.addEventListener('iframe-widget-error', (event) => {
             statusBox.textContent = 'ウィジェットの読み込みに失敗しました: ' + (event.detail || '不明なエラー');
             statusBox.classList.add('error');
         });

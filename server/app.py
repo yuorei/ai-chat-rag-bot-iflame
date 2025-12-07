@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 import google.generativeai as genai
-from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
+from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError, ResourceExhausted
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
@@ -20,7 +20,7 @@ import requests
 import traceback
 from functools import wraps
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
 
 load_dotenv()
@@ -37,6 +37,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Gemini API設定
 genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
+GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL_NAME', 'gemini-2.0-flash-lite')
 
 # Qdrant設定
 collection_name = "chat_context"
@@ -53,11 +54,17 @@ if not os.path.exists(DEFAULT_TENANT_PATH):
 TENANT_CONFIG_PATH = os.getenv('TENANT_CONFIG_PATH', DEFAULT_TENANT_PATH)
 JWT_SECRET = os.getenv('WIDGET_JWT_SECRET')
 if not JWT_SECRET:
+    flask_env = os.getenv('FLASK_ENV', 'production')
+    if flask_env == 'production':
+        raise ValueError("WIDGET_JWT_SECRET must be set in production environment")
     print("[WARN] WIDGET_JWT_SECRET is not set. Falling back to an unsafe development secret.")
     JWT_SECRET = 'dev-change-me'
 
 SESSION_TOKEN_TTL = int(os.getenv('WIDGET_SESSION_TTL_SECONDS', 60 * 60 * 6))
 JWT_ALGORITHM = 'HS256'
+
+# 管理エンドポイント用のAPIキー（オプション）
+ADMIN_API_KEY = os.getenv('ADMIN_API_KEY')
 
 def init_qdrant():
     global qdrant_client, embedding_model
@@ -325,7 +332,7 @@ tenant_registry = TenantRegistry(TENANT_CONFIG_PATH)
 
 
 def issue_session_token(tenant_id, host):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload = {
         'tenant_id': tenant_id,
         'host': host,
@@ -350,6 +357,22 @@ def extract_bearer_token():
     return request.args.get('token')
 
 
+def require_admin_auth(fn):
+    """管理エンドポイント用の認証デコレータ（オプション）"""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if ADMIN_API_KEY:
+            # APIキーが設定されている場合は認証を要求
+            provided_key = request.headers.get('X-Admin-API-Key') or request.args.get('admin_api_key')
+            if not provided_key or provided_key != ADMIN_API_KEY:
+                return jsonify({'error': 'Admin authentication required'}), 401
+        # APIキーが設定されていない場合は警告のみ（開発環境用）
+        elif os.getenv('FLASK_ENV') == 'production':
+            print("[WARN] ADMIN_API_KEY is not set. Admin endpoints are unprotected.")
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 def require_tenant_session(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -368,6 +391,32 @@ def require_tenant_session(fn):
         if not tenant:
             return jsonify({'error': 'Unknown tenant'}), 401
 
+        # JWTのhostクレームとリクエスト元を照合
+        token_host = payload.get('host', '').strip()
+        if token_host:
+            # リクエスト元ホストを取得（Originヘッダーまたはrequest.host）
+            request_host = request.headers.get('Origin', '')
+            if request_host:
+                try:
+                    parsed_origin = urlparse(request_host)
+                    request_host = parsed_origin.netloc
+                except:
+                    pass
+            if not request_host:
+                request_host = request.host
+            
+            # ホストを正規化して比較
+            tenant_registry_normalizer = tenant_registry._normalize_domain
+            normalized_token_host = tenant_registry_normalizer(token_host)
+            normalized_request_host = tenant_registry_normalizer(request_host)
+            
+            if normalized_token_host and normalized_request_host:
+                # www.の有無を考慮して比較
+                token_candidates = tenant_registry._candidate_domains(token_host)
+                request_candidates = tenant_registry._candidate_domains(request_host)
+                if not any(tc in request_candidates for tc in token_candidates):
+                    return jsonify({'error': 'Host mismatch'}), 403
+
         g.tenant = tenant
         g.tenant_claims = payload
         g.session_token = token
@@ -376,8 +425,9 @@ def require_tenant_session(fn):
     return wrapper
 
 class AIAgent:
-    def __init__(self):
-        self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
+    def __init__(self, model_name=None):
+        self.model_name = model_name or GEMINI_MODEL_NAME
+        self.model = genai.GenerativeModel(self.model_name)
         self.system_prompt = """
         あなたは親しみやすく知識豊富なAIチャットボットです。特に「ユオレイ」に関する質問には、詳細で正確な情報を提供してください。
 
@@ -402,6 +452,20 @@ class AIAgent:
         特に「プロジェクト」「開発」「技術」「システム」「AI」「RAG」などの質問キーワードに敏感に反応してください。
         """
     
+    def _build_contextual_fallback(self, context, base_message):
+        if not context or not context.strip():
+            return base_message
+
+        sections = [segment.strip() for segment in context.split("\n---\n") if segment.strip()]
+        if not sections:
+            return base_message
+
+        snippet = "\n---\n".join(sections[:2])
+        if len(snippet) > 1200:
+            snippet = snippet[:1200].rstrip() + "..."
+
+        return f"{base_message}\n\n【参考情報（ナレッジからの抜粋）】\n{snippet}"
+
     def think_and_respond(self, query, context="", system_prompt=None):
         if not context.strip():
             return "申し訳ありませんが、お尋ねの件について保存されている情報が見つかりませんでした。もう少し詳しく教えていただけますでしょうか？"
@@ -435,10 +499,18 @@ class AIAgent:
             print("Gemini DeadlineExceeded:", e)
             traceback.print_exc()
             return "現在AIの応答生成に時間がかかっています。少し待ってからもう一度お試しください。"
+        except ResourceExhausted as e:
+            print("Gemini quota exhausted:", e)
+            traceback.print_exc()
+            message = (
+                "Gemini APIの利用上限に達しました"
+            )
+            return self._build_contextual_fallback(context, message)
         except GoogleAPICallError as e:
             print("Gemini API error:", e)
             traceback.print_exc()
-            return "AIサービスの呼び出しに失敗しました。時間をおいて再度お試しください。"
+            message = "AIサービスの呼び出しに失敗しました。時間をおいて再度お試しください。"
+            return self._build_contextual_fallback(context, message)
         except Exception as e:
             print("Unexpected Gemini error:", e)
             traceback.print_exc()
@@ -539,12 +611,17 @@ def chat():
         #     except Exception as e:
         #         print(f"Failed to save to Qdrant: {e}")
         
-        return jsonify({
+        # tenant_idはデバッグ用のため、本番環境では返さない
+        response_data = {
             'response': response,
             'context_found': context_found,
-            'tenant_id': tenant_id,
             'sources_used': len(context.split("\n---\n")) if context_found else 0
-        })
+        }
+        # デバッグモードの場合のみtenant_idを含める
+        if os.getenv('FLASK_ENV') == 'development':
+            response_data['tenant_id'] = tenant_id
+        
+        return jsonify(response_data)
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -552,12 +629,23 @@ def chat():
 
 @app.route('/public/init', methods=['POST'])
 def public_init():
-    data = request.get_json(silent=True) or {}
-    host = data.get('host', '').strip()
-    if not host:
-        host = request.headers.get('X-Widget-Host', '').strip()
+    # セキュリティ: リクエスト元ホストのみを使用（リクエストボディやヘッダーからは受け取らない）
+    # Originヘッダーまたはrequest.hostを使用
+    host = request.headers.get('Origin', '')
+    if host:
+        try:
+            parsed_origin = urlparse(host)
+            host = parsed_origin.netloc
+        except:
+            host = ''
+    
     if not host:
         host = request.host
+    
+    # ホストを正規化
+    host = tenant_registry._normalize_domain(host)
+    if not host:
+        return jsonify({'ok': False, 'error': 'Invalid host'}), 400
 
     tenant = tenant_registry.find_by_host(host)
     if not tenant:
@@ -575,6 +663,7 @@ def public_init():
     })
 
 @app.route('/api/add_knowledge', methods=['POST'])
+@require_admin_auth
 def add_knowledge():
     try:
         data = request.get_json()
@@ -624,6 +713,7 @@ def add_knowledge():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload_file', methods=['POST'])
+@require_admin_auth
 def upload_file():
     try:
         tenant_id = request.form.get('tenant_id') or request.form.get('tenantId')
@@ -713,6 +803,7 @@ def upload_file():
         return jsonify({'error': f'アップロードエラー: {str(e)}'}), 500
 
 @app.route('/api/fetch_url', methods=['POST'])
+@require_admin_auth
 def fetch_url():
     try:
         data = request.get_json()

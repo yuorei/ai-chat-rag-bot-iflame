@@ -1,11 +1,11 @@
 (function () {
-  if (window.__IFLAME_WIDGET_LOADED__) {
+  if (window.__IFRAME_WIDGET_LOADED__) {
     return;
   }
-  window.__IFLAME_WIDGET_LOADED__ = true;
+  window.__IFRAME_WIDGET_LOADED__ = true;
 
   const scriptEl = document.currentScript;
-  const globalConfig = window.IFLAME_WIDGET_CONFIG || {
+  const globalConfig = window.IFRAME_WIDGET_CONFIG || {
     apiBaseUrl: 'http://localhost:8000',
     widgetBaseUrl: 'http://localhost:3000'
   };
@@ -30,7 +30,7 @@
         const srcUrl = new URL(scriptEl.src, window.location.origin);
         return `${srcUrl.origin}`;
       } catch (e) {
-        console.warn('[iflame-widget] Failed to parse script src', e);
+        console.warn('[iframe-widget] Failed to parse script src', e);
       }
     }
     return normalizeBase(window.location.origin);
@@ -58,12 +58,12 @@
   }
 
   function mountWidget(sessionToken) {
-    if (document.getElementById('iflame-widget-frame')) {
+    if (document.getElementById('iframe-widget-frame')) {
       return;
     }
 
     const iframe = document.createElement('iframe');
-    iframe.id = 'iflame-widget-frame';
+    iframe.id = 'iframe-widget-frame';
     iframe.src = `${widgetBase}/index.html?token=${encodeURIComponent(sessionToken)}&apiBase=${encodeURIComponent(apiBase)}`;
     iframe.style.position = 'fixed';
     iframe.style.right = dataset.right || '20px';
@@ -78,7 +78,7 @@
 
     const toggleButton = document.createElement('button');
     toggleButton.type = 'button';
-    toggleButton.id = 'iflame-widget-toggle';
+    toggleButton.id = 'iframe-widget-toggle';
     toggleButton.textContent = dataset.buttonLabel || '💬';
     toggleButton.style.position = 'fixed';
     toggleButton.style.right = dataset.buttonRight || '20px';
@@ -109,16 +109,13 @@
   }
 
   function requestSessionToken() {
-    const payload = {
-      host: window.location.host
-    };
+    // セキュリティ: ホスト情報はサーバー側でOriginヘッダーから取得するため、
+    // リクエストボディやカスタムヘッダーには含めない
     return fetch(`${apiBase}/public/init`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-Widget-Host': window.location.host
-      },
-      body: JSON.stringify(payload)
+        'Content-Type': 'application/json'
+      }
     })
       .then((res) => {
         if (!res.ok) {
@@ -138,11 +135,11 @@
     requestSessionToken()
       .then((token) => {
         mountWidget(token);
-        window.dispatchEvent(new CustomEvent('iflame-widget-ready'));
+        window.dispatchEvent(new CustomEvent('iframe-widget-ready'));
       })
       .catch((err) => {
-        console.error('[iflame-widget] Failed to initialize widget', err);
-        window.dispatchEvent(new CustomEvent('iflame-widget-error', {
+        console.error('[iframe-widget] Failed to initialize widget', err);
+        window.dispatchEvent(new CustomEvent('iframe-widget-error', {
           detail: err && err.message ? err.message : String(err)
         }));
       });
