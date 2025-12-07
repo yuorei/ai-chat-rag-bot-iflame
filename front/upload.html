@@ -134,6 +134,21 @@
             color: #333;
         }
 
+        .tenant-selector {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 2px dashed #dbe4f1;
+            border-radius: 10px;
+            background: #f9fbff;
+        }
+
+        .tenant-hint {
+            display: block;
+            margin-top: 6px;
+            color: #666;
+            font-size: 13px;
+        }
+
         .form-group input,
         .form-group textarea,
         .form-group select {
@@ -356,6 +371,14 @@
             <div class="alert alert-success" id="successAlert"></div>
             <div class="alert alert-error" id="errorAlert"></div>
 
+            <div class="tenant-selector">
+                <div class="form-group">
+                    <label for="tenantId">テナントID（管理者のみ入力）</label>
+                    <input type="text" id="tenantId" placeholder="例: tenant_demo">
+                    <span class="tenant-hint">企業サイトの担当者には公開せず、社内の運用者のみが保持してください。</span>
+                </div>
+            </div>
+
             <!-- 手動入力方式 -->
             <div class="upload-method">
                 <div class="method-header" onclick="toggleMethod('manual')">
@@ -469,7 +492,17 @@
 
     <script>
         const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'http://localhost:8000';
+        const tenantIdInput = document.getElementById('tenantId');
         let selectedFiles = [];
+
+        function requireTenantId() {
+            const value = tenantIdInput.value.trim();
+            if (!value) {
+                showAlert('テナントIDを入力してください。', 'error');
+                return null;
+            }
+            return value;
+        }
 
         // メソッドの開閉
         function toggleMethod(methodId) {
@@ -484,6 +517,10 @@
         document.getElementById('manual-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const tenantId = requireTenantId();
+            if (!tenantId) {
+                return;
+            }
             const title = document.getElementById('manual-title').value;
             const content = document.getElementById('manual-content-text').value;
             const category = document.getElementById('manual-category').value;
@@ -499,7 +536,8 @@
                         title, 
                         content: content,
                         category,
-                        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+                        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+                        tenant_id: tenantId
                     })
                 });
 
@@ -596,6 +634,10 @@
 
         async function uploadFiles() {
             if (selectedFiles.length === 0) return;
+            const tenantId = requireTenantId();
+            if (!tenantId) {
+                return;
+            }
             
             const progressBar = document.getElementById('progressBar');
             const progressFill = document.getElementById('progressFill');
@@ -615,6 +657,7 @@
                     
                     const formData = new FormData();
                     formData.append('file', file);
+                    formData.append('tenant_id', tenantId);
                     
                     const response = await fetch(`${API_BASE}/api/upload_file`, {
                         method: 'POST',
@@ -661,6 +704,10 @@
         document.getElementById('url-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            const tenantId = requireTenantId();
+            if (!tenantId) {
+                return;
+            }
             const url = document.getElementById('url-input').value;
             const title = document.getElementById('url-title').value;
             
@@ -670,7 +717,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ url, title })
+                    body: JSON.stringify({ url, title, tenant_id: tenantId })
                 });
 
                 const data = await response.json();

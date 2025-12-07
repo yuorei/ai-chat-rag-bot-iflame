@@ -1,9 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, g
 from flask_cors import CORS
 import google.generativeai as genai
 from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams, PointStruct
+from qdrant_client.http.models import Distance, VectorParams, PointStruct, Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
 import os
 from dotenv import load_dotenv
@@ -18,6 +18,10 @@ from bs4 import BeautifulSoup
 import tempfile
 import requests
 import traceback
+from functools import wraps
+import jwt
+from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 load_dotenv()
 
@@ -36,6 +40,24 @@ genai.configure(api_key=os.getenv('GEMINI_API_KEY'))
 
 # Qdrant設定
 collection_name = "chat_context"
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_TENANT_PATH = os.path.join(BASE_DIR, 'data', 'tenants.json')
+# serverコンテナでは data ディレクトリを /app/data にマウントしているため、
+# 存在しない場合は上位階層の data も探す
+if not os.path.exists(DEFAULT_TENANT_PATH):
+    alt_path = os.path.join(os.path.dirname(BASE_DIR), 'data', 'tenants.json')
+    if os.path.exists(alt_path):
+        DEFAULT_TENANT_PATH = alt_path
+
+TENANT_CONFIG_PATH = os.getenv('TENANT_CONFIG_PATH', DEFAULT_TENANT_PATH)
+JWT_SECRET = os.getenv('WIDGET_JWT_SECRET')
+if not JWT_SECRET:
+    print("[WARN] WIDGET_JWT_SECRET is not set. Falling back to an unsafe development secret.")
+    JWT_SECRET = 'dev-change-me'
+
+SESSION_TOKEN_TTL = int(os.getenv('WIDGET_SESSION_TTL_SECONDS', 60 * 60 * 6))
+JWT_ALGORITHM = 'HS256'
 
 def init_qdrant():
     global qdrant_client, embedding_model
@@ -216,6 +238,143 @@ def fetch_url_content(url):
         print(f"Error fetching URL {url}: {e}")
         return None
 
+
+class TenantRegistry:
+    def __init__(self, config_path):
+        self.config_path = config_path
+        self.tenants = {}
+        self.domain_map = {}
+        self.reload()
+
+    def reload(self):
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            print(f"[WARN] Tenant config not found at {self.config_path}")
+            self.tenants = {}
+            self.domain_map = {}
+            return
+        except json.JSONDecodeError as e:
+            print(f"[ERROR] Tenant config is invalid JSON: {e}")
+            self.tenants = {}
+            self.domain_map = {}
+            return
+
+        tenants = {}
+        domain_map = {}
+        for entry in data.get('tenants', []):
+            tenant_id = entry.get('id')
+            if not tenant_id:
+                continue
+
+            entry['id'] = tenant_id
+            entry['allowed_domains'] = entry.get('allowed_domains', [])
+            tenants[tenant_id] = entry
+
+            for domain in entry['allowed_domains']:
+                normalized = self._normalize_domain(domain)
+                if not normalized:
+                    continue
+                domain_map[normalized] = tenant_id
+                if normalized.startswith('www.'):
+                    domain_map[normalized[4:]] = tenant_id
+                else:
+                    domain_map[f"www.{normalized}"] = tenant_id
+
+        self.tenants = tenants
+        self.domain_map = domain_map
+
+    def get(self, tenant_id):
+        return self.tenants.get(tenant_id)
+
+    def find_by_host(self, host):
+        for candidate in self._candidate_domains(host):
+            tenant_id = self.domain_map.get(candidate)
+            if tenant_id:
+                return self.tenants.get(tenant_id)
+        return None
+
+    def _candidate_domains(self, host):
+        normalized = self._normalize_domain(host)
+        if not normalized:
+            return []
+        candidates = [normalized]
+        if normalized.startswith('www.'):
+            candidates.append(normalized[4:])
+        else:
+            candidates.append(f"www.{normalized}")
+        return candidates
+
+    def _normalize_domain(self, value):
+        if not value:
+            return None
+        value = value.strip()
+        if value.startswith('http://') or value.startswith('https://'):
+            parsed = urlparse(value)
+            value = parsed.netloc or parsed.path
+        value = value.split('/')[0]
+        value = value.split(':')[0]
+        value = value.lower()
+        if value.startswith('.'):
+            value = value[1:]
+        return value or None
+
+
+tenant_registry = TenantRegistry(TENANT_CONFIG_PATH)
+
+
+def issue_session_token(tenant_id, host):
+    now = datetime.utcnow()
+    payload = {
+        'tenant_id': tenant_id,
+        'host': host,
+        'session_id': str(uuid.uuid4()),
+        'iat': now,
+        'exp': now + timedelta(seconds=SESSION_TOKEN_TTL)
+    }
+    token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    if isinstance(token, bytes):
+        return token.decode('utf-8')
+    return token
+
+
+def decode_session_token(token):
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+
+def extract_bearer_token():
+    auth_header = request.headers.get('Authorization', '')
+    if auth_header.lower().startswith('bearer '):
+        return auth_header[7:].strip()
+    return request.args.get('token')
+
+
+def require_tenant_session(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        token = extract_bearer_token()
+        if not token:
+            return jsonify({'error': 'Missing session token'}), 401
+        try:
+            payload = decode_session_token(token)
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Session expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid session token'}), 401
+
+        tenant_id = payload.get('tenant_id')
+        tenant = tenant_registry.get(tenant_id)
+        if not tenant:
+            return jsonify({'error': 'Unknown tenant'}), 401
+
+        g.tenant = tenant
+        g.tenant_claims = payload
+        g.session_token = token
+        return fn(*args, **kwargs)
+
+    return wrapper
+
 class AIAgent:
     def __init__(self):
         self.model = genai.GenerativeModel('gemini-2.0-flash-lite')
@@ -243,12 +402,13 @@ class AIAgent:
         特に「プロジェクト」「開発」「技術」「システム」「AI」「RAG」などの質問キーワードに敏感に反応してください。
         """
     
-    def think_and_respond(self, query, context=""):
+    def think_and_respond(self, query, context="", system_prompt=None):
         if not context.strip():
             return "申し訳ありませんが、お尋ねの件について保存されている情報が見つかりませんでした。もう少し詳しく教えていただけますでしょうか？"
         
+        prompt_header = system_prompt if system_prompt else self.system_prompt
         prompt = f"""
-        {self.system_prompt}
+        {prompt_header}
         
         【利用可能な情報】
         {context}
@@ -287,10 +447,16 @@ class AIAgent:
 ai_agent = AIAgent()
 
 @app.route('/api/chat', methods=['POST'])
+@require_tenant_session
 def chat():
     try:
         data = request.get_json()
         query = data.get('message', '')
+        tenant = getattr(g, 'tenant', {})
+        tenant_id = tenant.get('id')
+        if not tenant_id:
+            return jsonify({'error': 'Tenant configuration is invalid'}), 500
+        system_prompt = tenant.get('system_prompt')
         
         context = ""
         context_found = False
@@ -303,19 +469,26 @@ def chat():
                 
                 # 類似検索（より多くの候補を取得）
                 # ナレッジのみを検索
-                from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+                search_filter = Filter(
+                    must=[
+                        FieldCondition(
+                            key="tenant_id",
+                            match=MatchValue(value=tenant_id)
+                        )
+                    ],
+                    must_not=[
+                        FieldCondition(
+                            key="type",
+                            match=MatchValue(value="chat")
+                        )
+                    ]
+                )
+
                 search_result = qdrant_client.search(
                     collection_name=collection_name,
                     query_vector=query_vector,
                     limit=10,
-                    query_filter=Filter(
-                        must_not=[
-                            FieldCondition(
-                                key="type",
-                                match=MatchValue(value="chat")
-                            )
-                        ]
-                    )
+                    query_filter=search_filter
                 )
                 print(f"Vector search results: {len(search_result)} candidates found")
                 if search_result:
@@ -337,7 +510,7 @@ def chat():
                 print(f"Vector search failed: {e}")
         
         # AI Agentに思考させて回答生成
-        response = ai_agent.think_and_respond(query, context)
+        response = ai_agent.think_and_respond(query, context, system_prompt=system_prompt)
         
         # チャット履歴をQdrantに保存（簡潔な形式で）
         # 会話の引き継ぎを防止するためにコメントアウト
@@ -369,11 +542,37 @@ def chat():
         return jsonify({
             'response': response,
             'context_found': context_found,
+            'tenant_id': tenant_id,
             'sources_used': len(context.split("\n---\n")) if context_found else 0
         })
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/public/init', methods=['POST'])
+def public_init():
+    data = request.get_json(silent=True) or {}
+    host = data.get('host', '').strip()
+    if not host:
+        host = request.headers.get('X-Widget-Host', '').strip()
+    if not host:
+        host = request.host
+
+    tenant = tenant_registry.find_by_host(host)
+    if not tenant:
+        return jsonify({'ok': False})
+
+    tenant_id = tenant.get('id')
+    token = issue_session_token(tenant_id, host)
+    return jsonify({
+        'ok': True,
+        'sessionToken': token,
+        'tenant': {
+            'id': tenant_id,
+            'name': tenant.get('name')
+        }
+    })
 
 @app.route('/api/add_knowledge', methods=['POST'])
 def add_knowledge():
@@ -381,6 +580,13 @@ def add_knowledge():
         data = request.get_json()
         content = data.get('content', '')
         title = data.get('title', '')
+        tenant_id = data.get('tenant_id')
+        if not tenant_id:
+            return jsonify({'error': 'tenant_id is required'}), 400
+        if not tenant_registry.get(tenant_id):
+            return jsonify({'error': 'Unknown tenant_id'}), 404
+        category = data.get('category')
+        tags = data.get('tags') if isinstance(data.get('tags'), list) else []
         
         # 知識をQdrantに追加
         if qdrant_client and embedding_model:
@@ -393,8 +599,12 @@ def add_knowledge():
                     payload={
                         "text": content,
                         "title": title,
+                        "tenant_id": tenant_id,
+                        "type": "knowledge",
+                        "category": category,
+                        "tags": tags,
                         "timestamp": time.time(),
-                        "type": "knowledge"
+                        "source": "manual"
                     }
                 )
                 
@@ -416,6 +626,11 @@ def add_knowledge():
 @app.route('/api/upload_file', methods=['POST'])
 def upload_file():
     try:
+        tenant_id = request.form.get('tenant_id') or request.form.get('tenantId')
+        if not tenant_id:
+            return jsonify({'error': 'tenant_id is required'}), 400
+        if not tenant_registry.get(tenant_id):
+            return jsonify({'error': 'Unknown tenant_id'}), 404
         if 'file' not in request.files:
             return jsonify({'error': 'ファイルが選択されていません'}), 400
         
@@ -467,6 +682,8 @@ def upload_file():
                         "title": filename,
                         "source": "file_upload",
                         "file_type": file_extension,
+                        "tenant_id": tenant_id,
+                        "type": "knowledge",
                         "timestamp": time.time()
                     }
                 )
@@ -501,6 +718,11 @@ def fetch_url():
         data = request.get_json()
         url = data.get('url', '').strip()
         custom_title = data.get('title', '').strip()
+        tenant_id = data.get('tenant_id')
+        if not tenant_id:
+            return jsonify({'error': 'tenant_id is required'}), 400
+        if not tenant_registry.get(tenant_id):
+            return jsonify({'error': 'Unknown tenant_id'}), 404
         
         if not url:
             return jsonify({'error': 'URLが入力されていません'}), 400
@@ -524,14 +746,16 @@ def fetch_url():
             point = PointStruct(
                 id=str(uuid.uuid4()),
                 vector=vector,
-                payload={
-                    "text": content,
-                    "title": title,
-                    "source": "url_fetch",
-                    "url": url,
-                    "timestamp": time.time()
-                }
-            )
+                    payload={
+                        "text": content,
+                        "title": title,
+                        "source": "url_fetch",
+                        "url": url,
+                        "tenant_id": tenant_id,
+                        "type": "knowledge",
+                        "timestamp": time.time()
+                    }
+                )
             
             qdrant_client.upsert(
                 collection_name=collection_name,

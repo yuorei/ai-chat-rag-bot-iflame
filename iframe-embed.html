@@ -43,6 +43,23 @@
             margin: 30px 0;
         }
 
+        .widget-status {
+            margin: 30px auto 0;
+            max-width: 600px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            border: 1px solid #d0e4ff;
+            background: #f3f8ff;
+            color: #2c3e50;
+            font-size: 14px;
+        }
+
+        .widget-status.error {
+            border-color: #ffd8d8;
+            background: #fff5f5;
+            color: #c0392b;
+        }
+
         .feature-card {
             padding: 20px;
             background-color: #f8f9fa;
@@ -55,73 +72,7 @@
             color: #007bff;
         }
 
-        .embedded-chat {
-            position: fixed;
-            bottom: 90px;
-            right: 20px;
-            border-radius: 12px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            background: white;
-            z-index: 1000;
-            display: none;
-            transition: all 0.3s ease;
-        }
-
-        .embedded-chat.open {
-            display: block;
-        }
-
-        .chat-toggle {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            width: 60px;
-            height: 60px;
-            background: #4a90e2;
-            border: none;
-            border-radius: 50%;
-            color: white;
-            font-size: 24px;
-            cursor: pointer;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            z-index: 1001;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .chat-toggle:hover {
-            background: #357abd;
-            transform: scale(1.05);
-        }
-
-        .chat-toggle.active {
-            background: #dc3545;
-        }
-
-        .chat-toggle.active:hover {
-            background: #c82333;
-        }
-
-        .embedded-chat iframe {
-            border-radius: 12px;
-        }
-
-        /* レスポンシブ対応 */
         @media (max-width: 768px) {
-            .embedded-chat {
-                bottom: 90px;
-                right: 10px;
-                width: 350px !important;
-                height: 500px !important;
-            }
-
-            .embedded-chat iframe {
-                width: 350px !important;
-                height: 500px !important;
-            }
-
             .main-content {
                 padding: 20px;
                 margin-bottom: 80px;
@@ -129,18 +80,6 @@
         }
 
         @media (max-width: 480px) {
-            .embedded-chat {
-                width: calc(100vw - 20px) !important;
-                height: 400px !important;
-                right: 10px;
-                bottom: 90px;
-            }
-
-            .embedded-chat iframe {
-                width: calc(100vw - 20px) !important;
-                height: 400px !important;
-            }
-
             .main-content {
                 margin-bottom: 80px;
             }
@@ -201,34 +140,35 @@
             質問に対して単純な回答だけでなく、AIがどのように考えて回答に至ったかのプロセスも確認できるため、
             AIの動作を理解しながら対話を楽しむことができます。
         </p>
-    </div>
 
-    <!-- チャット開閉ボタン -->
-    <button class="chat-toggle" id="chatToggle" onclick="toggleChat()">
-        💬
-    </button>
-
-    <!-- 右下に固定されたチャットボット -->
-    <div class="embedded-chat" id="embeddedChat">
-        <iframe src="http://localhost:3000" width="400" height="600" frameborder="0">
-        </iframe>
+        <div class="widget-status" id="widgetStatus">
+            チャットウィジェットを読み込み中です。バックエンド/APIが起動していることを確認してください。
+        </div>
     </div>
 
     <script>
-        function toggleChat() {
-            const chatContainer = document.getElementById('embeddedChat');
-            const chatToggle = document.getElementById('chatToggle');
-            
-            if (chatContainer.classList.contains('open')) {
-                chatContainer.classList.remove('open');
-                chatToggle.textContent = '💬';
-                chatToggle.classList.remove('active');
-            } else {
-                chatContainer.classList.add('open');
-                chatToggle.textContent = '✕';
-                chatToggle.classList.add('active');
-            }
-        }
+        window.IFLAME_WIDGET_CONFIG = {
+            apiBaseUrl: 'http://localhost:8000',
+            widgetBaseUrl: 'http://localhost:3000'
+        };
+
+        const statusBox = document.getElementById('widgetStatus');
+        window.addEventListener('iflame-widget-ready', () => {
+            statusBox.textContent = 'ウィジェットの読み込みに成功しました。右下のボタンからチャットを開いてください。';
+            statusBox.classList.remove('error');
+        });
+        window.addEventListener('iflame-widget-error', (event) => {
+            statusBox.textContent = 'ウィジェットの読み込みに失敗しました: ' + (event.detail || '不明なエラー');
+            statusBox.classList.add('error');
+        });
+    </script>
+    <script
+        src="front/widget.js"
+        defer
+        data-button-label="💬"
+        data-close-label="✕"
+        data-width="420px"
+        data-height="640px">
     </script>
 </body>
 

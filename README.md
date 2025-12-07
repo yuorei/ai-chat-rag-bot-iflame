@@ -1,6 +1,6 @@
 # AI Chat Bot with RAG
 
-RAG（Retrieval-Augmented Generation）機能付きのAIチャットボットです。Gemini APIを使用し、思考プロセスを可視化するAI Agentとして動作します。iframe対応で外部サイトに埋め込み可能です。
+RAG（Retrieval-Augmented Generation）機能付きのAIチャットボットです。Gemini APIを使用し、思考プロセスを可視化するAI Agentとして動作します。iframe対応で外部サイトに埋め込み可能で、個人ブログやコミュニティサイトにも気軽に組み込めます。
 
 ## 機能
 
@@ -8,6 +8,7 @@ RAG（Retrieval-Augmented Generation）機能付きのAIチャットボットで
 - 🧠 思考プロセスを可視化するAI Agent
 - 📚 RAG機能（ChromaDBによるベクトル検索）
 - 🌐 iframe対応のWebインターフェース
+- 🌍 ドメイン自動判定によるマルチテナント対応
 - 🐳 Docker完全対応（Pythonコマンド不要）
 - 💾 知識ベース追加機能
 
@@ -35,6 +36,8 @@ GEMINI_API_KEY=your_actual_gemini_api_key_here
 FLASK_ENV=development
 FLASK_APP=app.py
 ```
+
+併せて `WIDGET_JWT_SECRET` を安全な値に変更し、`data/tenants.json` に利用したいサイトやコミュニティのテナント情報（`allowed_domains` を含む）を登録してください。
 
 ### 3. Docker実行
 
@@ -70,36 +73,107 @@ docker system prune -a
 - **API**: http://localhost:8000
 - **ChromaDB**: http://localhost:8001
 
+## テナント管理とウィジェット公開
+
+1. `data/tenants.json` にサイト／プロジェクトごとの設定を登録します。最低限、`id` / `name` / `allowed_domains` / `system_prompt` を記載してください。
+2. 公開したいサイトに貼るのは 1 行のスクリプトだけです。
+
+```html
+<script src="https://chat.example.com/widget.js" defer></script>
+```
+
+`widget.js` は現在のホスト名を `https://api.example.com/public/init` に送信し、該当ドメインのテナントを自動判定します。サーバーはテナントIDを含む JWT を発行し、iframe に引き渡します。
+
+### ローカル／カスタム構成
+
+本番のように API とチャットのホスト名が異なる場合は、スクリプトの直前に以下を仕込むか、`widget.js` の `data-api-base` / `data-widget-base` 属性を利用してください。
+
+```html
+<script>
+  window.IFLAME_WIDGET_CONFIG = {
+    apiBaseUrl: 'http://localhost:8000',
+    widgetBaseUrl: 'http://localhost:3000'
+  };
+</script>
+<script src="http://localhost:3000/widget.js" defer></script>
+```
+
+ウィジェットには丸いトグルボタンが付属しており、クリックすると iframe のチャット画面が開閉します。テナントIDや鍵情報は一切露出せず、ドメインのみで認証されます。
+
+リポジトリ内の `iframe-embed.html` をブラウザで開くと、上記スクリプトを組み込んだサンプルページをそのまま確認できます。
+
 ## API仕様
 
-### チャット
+### 1. `/public/init`
+任意のサイトに埋め込まれた `widget.js` がコールし、現在のドメインからテナントを自動判定します。
+
+```bash
+curl -X POST http://localhost:8000/public/init \
+  -H "Content-Type: application/json" \
+  -d '{"host": "www.example.com"}'
+```
+
+レスポンス（該当テナントがある場合）
+
+```json
+{
+  "ok": true,
+  "sessionToken": "JWT...",
+  "tenant": {"id": "tenant_demo", "name": "Demo Tenant"}
+}
+```
+
+### 2. `/api/chat`
+
+`Authorization: Bearer <sessionToken>` ヘッダーが必須です。ウィジェット経由では自動で付与されます。
+
 ```bash
 curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
   -d '{"message": "こんにちは"}'
 ```
 
-### 知識追加
+### 3. `/api/add_knowledge`
+
+運営者向けの管理画面から利用するエンドポイントです。`tenant_id` を指定して登録すると、ベクトルDBに `tenant_id` が付与され、他テナントと分離されます。
+
 ```bash
 curl -X POST http://localhost:8000/api/add_knowledge \
   -H "Content-Type: application/json" \
-  -d '{"title": "Python基礎", "content": "Pythonは汎用プログラミング言語です"}'
+  -d '{"tenant_id": "tenant_demo", "title": "Python基礎", "content": "Pythonは汎用..."}'
 ```
 
-### ヘルスチェック
+### 4. `/api/upload_file`
+
+フォームデータでファイルと `tenant_id` を送信します。
+
+```bash
+curl -X POST http://localhost:8000/api/upload_file \
+  -F tenant_id=tenant_demo \
+  -F file=@manual.pdf
+```
+
+### 5. `/api/fetch_url`
+
+```bash
+curl -X POST http://localhost:8000/api/fetch_url \
+  -H "Content-Type: application/json" \
+  -d '{"tenant_id": "tenant_demo", "url": "https://example.com"}'
+```
+
+### 6. `/health`
+
 ```bash
 curl http://localhost:8000/health
 ```
 
-## iframe埋め込み
+## 埋め込みスニペット
+
+どんなサイトにも以下の 1 行を貼るだけで構成できます（必要に応じて `window.IFLAME_WIDGET_CONFIG` でAPIのURLなどを上書きしてください）。
 
 ```html
-<iframe 
-  src="http://localhost:3000" 
-  width="800" 
-  height="600"
-  frameborder="0">
-</iframe>
+<script src="https://chat.example.com/widget.js" defer></script>
 ```
 
 ## プロジェクト構造
@@ -109,13 +183,17 @@ ai-chat-iflame/
 ├── docker-compose.yml     # Docker設定
 ├── .env.example          # 環境変数テンプレート
 ├── README.md            # このファイル
+├── data/                # テナント設定などの永続データ
+│   └── tenants.json
 ├── server/              # Flask APIサーバー
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── app.py          # メインアプリケーション
 └── front/              # フロントエンド
     ├── Dockerfile
-    └── index.html      # チャットUI
+    ├── index.html      # チャットUI（iframe内）
+    ├── widget.js       # サイト向け埋め込みスクリプト
+    └── upload.html etc # 管理者ツール
 ```
 
 ## トラブルシューティング
