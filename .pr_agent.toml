@@ -1,0 +1,12 @@
+[config]
+ignore_pr_labels = ["renovate"]
+language = "ja"
+
+[ignore]
+glob = ["*.lock", "dist/**"]
+
+[pr_reviewer]
+extra_instructions = """
+レビューは日本語でお願いします。
+重要度の高い指摘から並べてください。
+"""
