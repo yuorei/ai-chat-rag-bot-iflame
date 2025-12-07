@@ -115,7 +115,7 @@
     messageBanner.id = 'iframe-widget-banner';
     messageBanner.style.position = 'fixed';
     messageBanner.style.right = dataset.buttonRight || '20px';
-    messageBanner.style.bottom = (buttonBottom + buttonSize + 12) + 'px'; // ボタンの上に配置
+    messageBanner.style.bottom = (buttonBottom + buttonSize + gap) + 'px'; // ボタンの上に配置
     messageBanner.style.background = '#4dd0e1';
     messageBanner.style.color = '#000';
     messageBanner.style.padding = '12px 16px';
@@ -176,15 +176,9 @@
     messageBanner.appendChild(bannerText);
     messageBanner.appendChild(bannerClose);
 
-    // バナーが閉じられたかどうかのフラグ（×ボタンで閉じた場合）
-    let bannerDismissed = false;
-    // チャットが開かれたことがあるかのフラグ（一度開いたらバナーは永久に非表示）
-    let chatOpened = false;
-
     // バナーの閉じるボタンのイベント
     bannerClose.addEventListener('click', () => {
       messageBanner.style.display = 'none';
-      bannerDismissed = true;
     });
 
     toggleButton.addEventListener('click', () => {
@@ -196,11 +190,9 @@
       
       if (isHidden) {
         // チャットを開く
-        chatOpened = true;
         messageBanner.style.display = 'none'; // チャットを開いたらバナーを非表示（永久に）
         iframe.focus();
       }
-      // チャットを閉じてもバナーは再表示しない（chatOpenedがtrueのため）
     });
 
     iframe.style.display = 'none';
