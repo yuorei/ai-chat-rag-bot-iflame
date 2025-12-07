@@ -39,6 +39,11 @@ FLASK_ENV=development
 FLASK_APP=app.py
 WIDGET_JWT_SECRET=your_secure_random_secret_here
 ADMIN_API_KEY=your_admin_api_key_here  # オプション（管理エンドポイント用）
+# Qdrant（マネージド利用時はURL/APIキー、ローカルはホスト/ポートを指定）
+# QDRANT_URL=https://your-qdrant-endpoint:6333
+# QDRANT_API_KEY=your_qdrant_api_key
+# QDRANT_HOST=vectordb
+# QDRANT_PORT=6333
 ```
 
 **重要**: 
@@ -87,6 +92,10 @@ docker system prune -a
 | `FLASK_APP` | - | Flaskアプリケーションのエントリーポイント（通常は`app.py`） |
 | `TENANT_CONFIG_PATH` | - | テナント設定ファイルのパス（デフォルト: `./data/tenants.json`） |
 | `WIDGET_SESSION_TTL_SECONDS` | - | セッショントークンの有効期限（秒）。デフォルト: 21600（6時間） |
+| `QDRANT_URL` | - | マネージドQdrantのエンドポイントURL。設定時は`QDRANT_HOST`/`QDRANT_PORT`より優先され、APIキーと併用します。 |
+| `QDRANT_API_KEY` | - | マネージドQdrantにアクセスするためのAPIキー。`QDRANT_URL`を使う場合は必ず安全な値を設定してください。 |
+| `QDRANT_HOST` | - | 自前でホストするQdrantのホスト名。デフォルトはDocker Compose内の`vectordb`。 |
+| `QDRANT_PORT` | - | 自前でホストするQdrantのポート番号。デフォルトは`6333`。 |
 
 ## アクセス方法
 
