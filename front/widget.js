@@ -62,12 +62,28 @@
       return;
     }
 
+    // ---- ここから配置計算用の値 ----
+    // ボタンのサイズ（直径）
+    const buttonSize = parseInt(dataset.buttonSize || '56', 10);
+    // ボタンの bottom（px）
+    const buttonBottom = parseInt(dataset.buttonBottom || '20', 10);
+    // ボタンと iframe の隙間
+    const gap = parseInt(dataset.gap || '16', 10);
+
+    // iframe の bottom を計算
+    // data-bottom が指定されていればそれを優先し、
+    // なければ「ボタンの上 + gap」に配置する
+    const iframeBottom = dataset.bottom
+      ? parseInt(dataset.bottom, 10)
+      : buttonBottom + buttonSize + gap;
+    // ---- ここまで ----
+
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe-widget-frame';
     iframe.src = `${widgetBase}/index.html?token=${encodeURIComponent(sessionToken)}&apiBase=${encodeURIComponent(apiBase)}`;
     iframe.style.position = 'fixed';
     iframe.style.right = dataset.right || '20px';
-    iframe.style.bottom = dataset.bottom || '20px';
+    iframe.style.bottom = iframeBottom + 'px'; // ★ ボタンより上に配置
     iframe.style.width = dataset.width || '400px';
     iframe.style.height = dataset.height || '600px';
     iframe.style.border = 'none';
@@ -83,8 +99,8 @@
     toggleButton.style.position = 'fixed';
     toggleButton.style.right = dataset.buttonRight || '20px';
     toggleButton.style.bottom = dataset.buttonBottom || '20px';
-    toggleButton.style.width = '56px';
-    toggleButton.style.height = '56px';
+    toggleButton.style.width = buttonSize + 'px';
+    toggleButton.style.height = buttonSize + 'px';
     toggleButton.style.borderRadius = '50%';
     toggleButton.style.border = 'none';
     toggleButton.style.background = dataset.buttonColor || '#4a90e2';
@@ -94,18 +110,106 @@
     toggleButton.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
     toggleButton.style.zIndex = '2147483647';
 
+    // メッセージバナーの作成
+    const messageBanner = document.createElement('div');
+    messageBanner.id = 'iframe-widget-banner';
+    messageBanner.style.position = 'fixed';
+    messageBanner.style.right = dataset.buttonRight || '20px';
+    messageBanner.style.bottom = (buttonBottom + buttonSize + 12) + 'px'; // ボタンの上に配置
+    messageBanner.style.background = '#4dd0e1';
+    messageBanner.style.color = '#000';
+    messageBanner.style.padding = '12px 16px';
+    messageBanner.style.borderRadius = '8px';
+    messageBanner.style.display = 'flex';
+    messageBanner.style.alignItems = 'center';
+    messageBanner.style.gap = '12px';
+    messageBanner.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.15)';
+    messageBanner.style.zIndex = '2147483647';
+    messageBanner.style.maxWidth = '300px';
+    messageBanner.style.fontSize = '14px';
+    messageBanner.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+    // バナーアイコン
+    const bannerIcon = document.createElement('svg');
+    bannerIcon.style.width = '20px';
+    bannerIcon.style.height = '20px';
+    bannerIcon.style.flexShrink = '0';
+    bannerIcon.style.color = '#000';
+    bannerIcon.setAttribute('viewBox', '0 0 24 24');
+    bannerIcon.setAttribute('fill', 'none');
+    bannerIcon.setAttribute('stroke', 'currentColor');
+    bannerIcon.setAttribute('stroke-width', '2');
+    const iconPath = document.createElement('path');
+    iconPath.setAttribute('d', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z');
+    bannerIcon.appendChild(iconPath);
+
+    // バナーテキスト
+    const bannerText = document.createElement('span');
+    bannerText.textContent = 'チャットで質問できます！';
+    bannerText.style.flex = '1';
+    bannerText.style.color = '#000';
+
+    // バナーの閉じるボタン
+    const bannerClose = document.createElement('button');
+    bannerClose.textContent = '×';
+    bannerClose.style.background = 'none';
+    bannerClose.style.border = 'none';
+    bannerClose.style.color = '#000';
+    bannerClose.style.cursor = 'pointer';
+    bannerClose.style.fontSize = '18px';
+    bannerClose.style.padding = '0';
+    bannerClose.style.width = '20px';
+    bannerClose.style.height = '20px';
+    bannerClose.style.display = 'flex';
+    bannerClose.style.alignItems = 'center';
+    bannerClose.style.justifyContent = 'center';
+    bannerClose.style.flexShrink = '0';
+    bannerClose.setAttribute('aria-label', '閉じる');
+    bannerClose.addEventListener('mouseenter', () => {
+      bannerClose.style.opacity = '0.7';
+    });
+    bannerClose.addEventListener('mouseleave', () => {
+      bannerClose.style.opacity = '1';
+    });
+
+    messageBanner.appendChild(bannerIcon);
+    messageBanner.appendChild(bannerText);
+    messageBanner.appendChild(bannerClose);
+
+    // バナーが閉じられたかどうかのフラグ（×ボタンで閉じた場合）
+    let bannerDismissed = false;
+    // チャットが開かれたことがあるかのフラグ（一度開いたらバナーは永久に非表示）
+    let chatOpened = false;
+
+    // バナーの閉じるボタンのイベント
+    bannerClose.addEventListener('click', () => {
+      messageBanner.style.display = 'none';
+      bannerDismissed = true;
+    });
+
     toggleButton.addEventListener('click', () => {
       const isHidden = iframe.style.display === 'none';
       iframe.style.display = isHidden ? 'block' : 'none';
-      toggleButton.textContent = isHidden ? (dataset.closeLabel || '✕') : (dataset.buttonLabel || '💬');
+      toggleButton.textContent = isHidden
+        ? (dataset.closeLabel || '✕')
+        : (dataset.buttonLabel || '💬');
+      
       if (isHidden) {
+        // チャットを開く
+        chatOpened = true;
+        messageBanner.style.display = 'none'; // チャットを開いたらバナーを非表示（永久に）
         iframe.focus();
       }
+      // チャットを閉じてもバナーは再表示しない（chatOpenedがtrueのため）
     });
 
     iframe.style.display = 'none';
+    // 初期状態: バナーは表示、チャットは非表示
+    messageBanner.style.display = 'flex';
+    
     document.body.appendChild(iframe);
     document.body.appendChild(toggleButton);
+    document.body.appendChild(messageBanner);
   }
 
   function requestSessionToken() {
