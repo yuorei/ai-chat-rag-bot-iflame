@@ -347,7 +347,3 @@ docker-compose logs -f
 docker-compose logs -f web
 docker-compose logs -f vectordb
 ```
-
-## ライセンス
-
-MIT License
