@@ -66,8 +66,6 @@
             background: #f8f9fa;
             color: #333;
             align-self: flex-start;
-            white-space: pre-wrap;
-            line-height: 1.6;
             border: 1px solid #e9ecef;
             border-bottom-left-radius: 6px;
         }
@@ -166,11 +164,16 @@
 
         .loading {
             display: none;
-            align-self: flex-start;
-            padding: 12px 16px;
-            background: #e9ecef;
+            max-width: 80%;
+            padding: 16px 20px;
             border-radius: 18px;
+            background: #f8f9fa;
             color: #666;
+            align-self: flex-start;
+            border: 1px solid #e9ecef;
+            border-bottom-left-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 8px;
         }
 
         .loading.show {
@@ -182,19 +185,15 @@
 <body>
     <div class="chat-container">
         <div class="chat-header">
-            AI Chat Bot with RAG
+            AIが回答します。質問してください。
         </div>
 
 
 
         <div class="chat-messages" id="chatMessages">
             <div class="message bot-message">
-                <div class="message-content">こんにちは！何でもお気軽に質問してください。</div>
+                <div class="message-content">こんにちは!何でもお気軽に質問してください。</div>
             </div>
-        </div>
-
-        <div class="loading" id="loadingIndicator">
-            AI が考えています...
         </div>
 
         <div class="chat-input">
@@ -274,7 +273,6 @@
         async function sendMessage() {
             const input = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
-            const loadingIndicator = document.getElementById('loadingIndicator');
 
             if (!SESSION_TOKEN) {
                 return;
@@ -287,7 +285,15 @@
             input.value = '';
 
             sendButton.disabled = true;
-            loadingIndicator.classList.add('show');
+            
+            // ローディングインジケーターをメッセージとして表示
+            const messagesDiv = document.getElementById('chatMessages');
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'loading show';
+            loadingDiv.id = 'tempLoadingIndicator';
+            loadingDiv.textContent = 'AI が考えています...';
+            messagesDiv.appendChild(loadingDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
             try {
                 const response = await fetch(`${API_BASE}/api/chat`, {
@@ -301,16 +307,26 @@
 
                 const data = await response.json();
 
+                // ローディングインジケーターを削除
+                const tempLoading = document.getElementById('tempLoadingIndicator');
+                if (tempLoading) {
+                    tempLoading.remove();
+                }
+
                 if (data.error) {
                     addMessage('エラーが発生しました: ' + data.error);
                 } else {
                     addMessage(data.response);
                 }
             } catch (error) {
+                // ローディングインジケーターを削除
+                const tempLoading = document.getElementById('tempLoadingIndicator');
+                if (tempLoading) {
+                    tempLoading.remove();
+                }
                 addMessage('通信エラーが発生しました: ' + error.message);
             }
 
-            loadingIndicator.classList.remove('show');
             sendButton.disabled = false;
         }
 
