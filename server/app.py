@@ -41,6 +41,10 @@ GEMINI_MODEL_NAME = os.getenv('GEMINI_MODEL_NAME', 'gemini-2.0-flash-lite')
 
 # Qdrant設定
 collection_name = "chat_context"
+QDRANT_URL = os.getenv('QDRANT_URL')
+QDRANT_API_KEY = os.getenv('QDRANT_API_KEY')
+QDRANT_HOST = os.getenv('QDRANT_HOST', 'vectordb')
+QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_TENANT_PATH = os.path.join(BASE_DIR, 'data', 'tenants.json')
@@ -74,7 +78,17 @@ def init_qdrant():
     for attempt in range(max_retries):
         try:
             print(f"Attempting to connect to Qdrant (attempt {attempt + 1}/{max_retries})")
-            qdrant_client = QdrantClient(host="vectordb", port=6333)
+            qdrant_kwargs = {}
+            if QDRANT_URL:
+                qdrant_kwargs["url"] = QDRANT_URL
+                if QDRANT_API_KEY:
+                    qdrant_kwargs["api_key"] = QDRANT_API_KEY
+                print(f"Connecting to Qdrant via URL endpoint: {QDRANT_URL}")
+            else:
+                qdrant_kwargs["host"] = QDRANT_HOST
+                qdrant_kwargs["port"] = QDRANT_PORT
+                print(f"Connecting to Qdrant via host/port: {QDRANT_HOST}:{QDRANT_PORT}")
+            qdrant_client = QdrantClient(**qdrant_kwargs)
             
             # 接続テスト
             qdrant_client.get_collections()
