@@ -1,0 +1,40 @@
+name: pr-agent
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created, edited]
+
+jobs:
+  pr_agent_job:
+    # Bot がコメントしたときは動かさない
+    if: ${{ github.event.sender.type != 'Bot' }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: write
+
+    steps:
+      - name: PR Agent action step
+        id: pragent
+        uses: qodo-ai/pr-agent@main
+        env:
+          # GitHub トークン
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+          # --- ここから Gemini 用設定 ---
+
+          # LLM プロバイダを Gemini に指定（実際のキーは PR-Agent の README / docs の指定に合わせる）
+          LLM_PROVIDER: "gemini"
+          # Gemini の API キー
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_MODEL: "gemini-2.5-pro"
+
+          # --- 動作の自動化オプション（最小構成なのでお好みで） ---
+
+          github_action_config.auto_review: "true"      # PR 作成時に自動レビュー
+          github_action_config.auto_describe: "true"    # PR の説明を自動生成
+          github_action_config.auto_improve: "false"    # 自動の改善提案はとりあえず OFF
