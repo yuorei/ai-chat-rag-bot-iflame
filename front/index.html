@@ -204,7 +204,35 @@
     </div>
 
     <script>
-        const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:8000' : 'http://localhost:8000';
+        const urlParams = new URLSearchParams(window.location.search);
+        const SESSION_TOKEN = urlParams.get('token');
+        const apiBaseParam = urlParams.get('apiBase');
+        const API_BASE = normalizeApiBase(apiBaseParam || window.location.origin);
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+
+        if (!SESSION_TOKEN) {
+            lockChatForMissingToken();
+        }
+
+        function normalizeApiBase(value) {
+            if (!value) return '';
+            return value.endsWith('/') ? value.slice(0, -1) : value;
+        }
+
+        function lockChatForMissingToken() {
+            if (messageInput) {
+                messageInput.disabled = true;
+                messageInput.placeholder = 'このチャットは有効なトークンが必要です';
+            }
+            if (sendButton) {
+                sendButton.disabled = true;
+            }
+            const firstMessage = document.querySelector('.bot-message .message-content');
+            if (firstMessage) {
+                firstMessage.textContent = 'チャットウィジェットのトークンが見つかりません。提供されたスニペットで読み込まれているか確認してください。';
+            }
+        }
 
         function addMessage(content, isUser = false, isThinking = false) {
             const messagesDiv = document.getElementById('chatMessages');
@@ -248,6 +276,10 @@
             const sendButton = document.getElementById('sendButton');
             const loadingIndicator = document.getElementById('loadingIndicator');
 
+            if (!SESSION_TOKEN) {
+                return;
+            }
+
             if (!input.value.trim()) return;
 
             const message = input.value;
@@ -262,6 +294,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${SESSION_TOKEN}`
                     },
                     body: JSON.stringify({ message })
                 });

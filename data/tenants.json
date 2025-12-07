@@ -1,0 +1,13 @@
+{
+  "tenants": [
+    {
+      "id": "tenant_demo",
+      "name": "Demo Tenant",
+      "allowed_domains": [
+        "localhost"
+      ],
+      "system_prompt": "あなたはDemo Tenant向けのチャットボットです。質問に対して登録済みのナレッジのみから回答してください。",
+      "knowledge_base_id": null
+    }
+  ]
+}

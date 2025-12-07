@@ -27,11 +27,10 @@ jobs:
 
           # --- ここから Gemini 用設定 ---
 
-          # LLM プロバイダを Gemini に指定（実際のキーは PR-Agent の README / docs の指定に合わせる）
-          LLM_PROVIDER: "gemini"
-          # Gemini の API キー
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          LLM_MODEL: "gemini-2.5-pro"
+          # PR-Agent 公式ドキュメント準拠の Gemini モデル指定
+          config.model: "gemini/gemini-2.5-flash"
+          config.fallback_models: '["gemini/gemini-2.5-flash"]'
+          GOOGLE_AI_STUDIO.GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
           # --- 動作の自動化オプション（最小構成なのでお好みで） ---
 
