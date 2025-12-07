@@ -80,6 +80,24 @@ docker-compose down -v
 docker system prune -a
 ```
 
+### Docker Composeを使わずに単体起動する
+
+`Makefile` に Web(API) とフロントエンドを個別に起動するターゲットを用意しています。共有ネットワーク `ai-chat-iflame-net` が自動で作成されるため、必要に応じて `make network-down` で削除してください。
+
+```bash
+# Flaskバックエンドをビルド＆起動（Ctrl+Cで停止）
+make web-run
+
+# Nginxフロントエンドをビルド＆起動（Ctrl+Cで停止）
+make frontend-run
+
+# 片方だけ止めたい場合
+make web-stop
+make frontend-stop
+```
+
+※ Qdrantは別途起動（`docker run qdrant/qdrant ...` など）するか、`QDRANT_URL` をマネージド環境に向けてください。
+
 ## 環境変数の詳細
 
 | 環境変数 | 必須 | 説明 |

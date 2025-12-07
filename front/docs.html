@@ -343,9 +343,18 @@
 
                 <section id="quick-start" class="doc-section">
                     <h2>🚀 クイックスタート</h2>
+                    <h3>0. 事前準備：テナントを特定</h3>
+                    <ol>
+                        <li><a href="upload.html">アップロードページ</a>を社内ネットワークから開き、この画面は一般公開しないようにします</li>
+                        <li><code>data/tenants.json</code>に登録されている<code>id</code>、もしくは運用担当者から共有されたテナントIDを確認します</li>
+                        <li>ページ上部の「テナントID」に入力し、以降の操作をすべて対象テナントに紐づけます</li>
+                    </ol>
+                    <div class="highlight-box warning">
+                        <strong>⚠️ 認証について</strong>
+                        <p>アップロードAPIは管理者専用です。.envで<code>ADMIN_API_KEY</code>を設定している場合は、ブラウザからアクセスするときも必ず<code>X-Admin-API-Key</code>ヘッダーを付与してください（リバースプロキシやブラウザ拡張機能などで付与できます）。</p>
+                    </div>
                     <h3>1. 最も簡単な方法：手動入力</h3>
                     <ol>
-                        <li><a href="upload.html">アップロードページ</a>にアクセス</li>
                         <li>「手動で情報を入力」セクションを開く</li>
                         <li>タイトルと内容を入力</li>
                         <li>「情報を保存」ボタンをクリック</li>
@@ -403,7 +412,7 @@
                     <div class="highlight-box warning">
                         <strong>⚠️ 注意事項</strong>
                         <ul>
-                            <li>ファイルサイズは1ファイル10MB以下を推奨</li>
+                            <li>1ファイル16MBまで（転送負荷を避けるため10MB以下を推奨）</li>
                             <li>パスワード保護されたファイルは対応していません</li>
                             <li>画像のみのPDFは認識できない場合があります</li>
                         </ul>
@@ -421,6 +430,17 @@
                         <li>ニュースサイト</li>
                         <li>技術文書サイト</li>
                     </ul>
+                    <p>ページの<code>&lt;title&gt;</code>要素は自動で取得されますが、フォームの「タイトル」に入力すると優先されます。</p>
+
+                    <div class="highlight-box warning">
+                        <strong>⚠️ 取得時の制限</strong>
+                        <ul>
+                            <li>HTML本文のみ取得します（PDFやZIPなどのダウンロードリンクには対応しません）</li>
+                            <li>タイムアウトは10秒です。応答が遅いサイトやアクセス制限のあるサイトは失敗します</li>
+                            <li>ログイン必須ページやBasic認証、IP制限があるページにはアクセスできません</li>
+                            <li>JavaScriptで後から生成されるコンテンツは取得できないため、その場合は手動入力をご利用ください</li>
+                        </ul>
+                    </div>
 
                     <div class="example-card">
                         <div class="example-title">🔗 URL例</div>
@@ -608,23 +628,28 @@ response = requests.get('/api/users')
 
                 <section id="metadata" class="doc-section">
                     <h2>🏷️ メタデータ</h2>
-                    <p>アップロードした情報には自動的にメタデータが付与され、検索精度の向上に役立ちます。</p>
+                    <p>アップロードした情報はサーバーでテキスト化され、テナントごとにQdrantコレクション（<code>chat_context</code>）へ保存されます。ペイロードには以下のメタデータが格納され、RAG検索時のフィルタや監査に利用されます。</p>
                     
                     <h3>自動付与される情報</h3>
                     <ul>
-                        <li>アップロード日時</li>
-                        <li>ファイル形式</li>
-                        <li>文書の長さ</li>
-                        <li>推定される主要キーワード</li>
+                        <li><strong>tenant_id</strong>: テナント判別用ID（入力欄の値）</li>
+                        <li><strong>source</strong>: <code>manual</code> / <code>file_upload</code> / <code>url_fetch</code> のいずれか</li>
+                        <li><strong>timestamp</strong>: UNIXタイムスタンプ（アップロード時刻）</li>
+                        <li><strong>type</strong>: すべて<code>knowledge</code>として保存され、RAG検索対象となります</li>
+                        <li><strong>ファイル固有情報</strong>: ファイルアップロード時は<code>file_type</code>、URL取得時は<code>url</code>が付与されます</li>
                     </ul>
 
                     <h3>ユーザー指定可能な情報</h3>
                     <ul>
-                        <li>カテゴリ分類</li>
-                        <li>タグ（キーワード）</li>
-                        <li>重要度レベル</li>
-                        <li>更新頻度</li>
+                        <li><strong>タイトル</strong>: RAG結果の見出しとして利用されます</li>
+                        <li><strong>内容</strong>: 実際に埋め込みを生成するテキスト</li>
+                        <li><strong>カテゴリ</strong>: 手動入力フォームで任意選択</li>
+                        <li><strong>タグ</strong>: カンマ区切りで入力すると配列として保存されます</li>
                     </ul>
+                    <div class="highlight-box">
+                        <strong>ℹ️ メモ</strong>
+                        <p>重要度や更新頻度などの独自属性は専用フィールドがないため、本文やタグに記載する運用としてください。</p>
+                    </div>
                 </section>
 
                 <section id="examples" class="doc-section">
@@ -706,10 +731,17 @@ response = requests.get('/api/users')
                     
                     <h4>❓ ファイルがアップロードできない</h4>
                     <ul>
-                        <li>ファイルサイズが10MBを超えていないか確認</li>
+                        <li>ファイルサイズが16MBを超えていないか確認</li>
                         <li>対応形式（.txt, .pdf, .docx, .md, .json）であるか確認</li>
                         <li>ファイルが破損していないか確認</li>
                         <li>ブラウザを再起動して再試行</li>
+                    </ul>
+
+                    <h4>❓ 「Unknown tenant」や401/403エラーになる</h4>
+                    <ul>
+                        <li>入力したテナントIDが<code>data/tenants.json</code>に存在するか確認</li>
+                        <li>ホスト名の許可リストに現在アクセス中のドメインが含まれているか確認</li>
+                        <li>.envで<code>ADMIN_API_KEY</code>を設定している場合は、リクエストに<code>X-Admin-API-Key</code>ヘッダーを付与する</li>
                     </ul>
 
                     <h4>❓ PDFの内容が正しく認識されない</h4>
