@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "management-server-hono",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-12-16",
+  "vars": {
+    "MGMT_FLASK_BASE_URL": "http://localhost:8000",
+    "MGMT_FLASK_ADMIN_KEY": "",
+    "MGMT_ADMIN_API_KEY": "",
+    "MGMT_AUTH_SECRET": "dev-secret-change-me",
+    "MGMT_ALLOWED_ORIGINS": "http://localhost:5173",
+    "MGMT_ALLOW_OPEN_SIGNUP": "true",
+    "MGMT_COOKIE_SECURE": "false",
+    "MGMT_MAX_UPLOAD_MB": "50",
+    "MGMT_HTTP_TIMEOUT_SEC": "120"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "management-server-hono",
+      "database_id": "",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

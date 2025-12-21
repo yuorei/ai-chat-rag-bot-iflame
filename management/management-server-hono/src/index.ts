@@ -1,0 +1,1074 @@
+import { Hono } from 'hono'
+import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
+import { sign, verify } from 'hono/jwt'
+
+type D1Result<T = unknown> = {
+  results?: T[]
+  success: boolean
+  error?: string
+  meta?: {
+    duration?: number
+    changes?: number
+    last_row_id?: number
+  }
+}
+
+type D1PreparedStatement = {
+  bind: (...values: any[]) => D1PreparedStatement
+  first: <T = unknown>() => Promise<T | null>
+  all: <T = unknown>() => Promise<D1Result<T>>
+  run: <T = unknown>() => Promise<D1Result<T>>
+}
+
+type D1Database = {
+  prepare: (query: string) => D1PreparedStatement
+  batch: <T = unknown>(statements: D1PreparedStatement[]) => Promise<D1Result<T>[]>
+}
+
+type Bindings = {
+  DB: D1Database
+  MGMT_ADMIN_API_KEY?: string
+  MGMT_FLASK_BASE_URL?: string
+  MGMT_FLASK_ADMIN_KEY?: string
+  MGMT_AUTH_SECRET?: string
+  MGMT_ALLOW_OPEN_SIGNUP?: string
+  MGMT_ALLOWED_ORIGINS?: string
+  MGMT_COOKIE_SECURE?: string
+  MGMT_MAX_UPLOAD_MB?: string
+  MGMT_HTTP_TIMEOUT_SEC?: string
+}
+
+type Variables = {
+  user?: User
+  config?: Config
+}
+
+type Config = {
+  adminAPIKey: string
+  flaskBaseURL: string
+  flaskAdminKey: string
+  maxUploadBytes: number
+  requestTimeoutSec: number
+  authSecret: string
+  allowOpenSignup: boolean
+  allowedOrigins: string[]
+  cookieSecure: boolean
+}
+
+type User = {
+  id: string
+  email: string
+  is_admin: boolean
+  created_at: string
+  updated_at: string
+}
+
+type ChatProfile = {
+  id: string
+  target: string
+  targets: string[]
+  target_type: string
+  display_name: string
+  system_prompt: string
+  created_at: string
+  updated_at: string
+}
+
+type KnowledgeAsset = {
+  id: string
+  chat_id: string
+  type: string
+  title?: string
+  source_url?: string
+  original_filename?: string
+  storage_path?: string
+  status: string
+  embedding_count: number
+  error_message?: string
+  created_at: string
+  updated_at: string
+}
+
+const sessionTTLSeconds = 14 * 24 * 60 * 60
+const encoder = new TextEncoder()
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+app.use('*', async (c, next) => {
+  c.set('config', loadConfig(c.env))
+  const cfg = getConfig(c)
+  const origin = c.req.header('Origin') || ''
+  if (originAllowed(origin, cfg.allowedOrigins)) {
+    c.header('Access-Control-Allow-Origin', origin)
+    c.header('Access-Control-Allow-Credentials', 'true')
+  }
+  c.header('Vary', 'Origin')
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Admin-API-Key')
+  c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
+  if (c.req.method === 'OPTIONS') {
+    return c.body(null, 204)
+  }
+  return next()
+})
+
+app.get('/health', (c) => c.json({ status: 'ok' }))
+
+app.post('/api/auth/register', async (c) => {
+  const cfg = getConfig(c)
+  const body = await readJson<{ email: string; password: string }>(c)
+  if (!body) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  const email = (body.email || '').trim().toLowerCase()
+  const password = body.password || ''
+  if (!email || !email.includes('@')) {
+    return jsonError(c, 400, 'メールアドレスが不正です')
+  }
+  if (password.length < 8) {
+    return jsonError(c, 400, 'パスワードは8文字以上にしてください')
+  }
+
+  try {
+    const userCount = await countUsers(c)
+    if (userCount > 0 && !cfg.allowOpenSignup) {
+      const authUser = await authenticate(c)
+      if (!authUser || !authUser.is_admin) {
+        return jsonError(c, 403, 'サインアップは管理者のみ許可されています')
+      }
+    }
+
+    const passwordHash = await hashPassword(password)
+    const id = crypto.randomUUID()
+    const isAdmin = userCount === 0
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, email, password_hash, is_admin, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+      .bind(id, email, passwordHash, isAdmin ? 1 : 0)
+      .run()
+
+    const user = await fetchUserById(c, id)
+    if (!user) {
+      throw new Error('failed to load user after insert')
+    }
+    const token = await issueToken(user, cfg)
+    setSessionCookie(c, token, cfg)
+    return c.json({ user }, 201)
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return jsonError(c, 409, '既に登録されています')
+    }
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.post('/api/auth/login', async (c) => {
+  const cfg = getConfig(c)
+  const body = await readJson<{ email: string; password: string }>(c)
+  if (!body) {
+    return jsonError(c, 400, 'invalid json')
+  }
+  const email = (body.email || '').trim().toLowerCase()
+  const password = body.password || ''
+  if (!email || !password) {
+    return jsonError(c, 400, 'メールアドレスとパスワードを入力してください')
+  }
+
+  try {
+    const found = await fetchUserWithPasswordByEmail(c, email)
+    if (!found) {
+      return jsonError(c, 401, 'メールアドレスまたはパスワードが違います')
+    }
+    const verified = await verifyPassword(found.passwordHash, password)
+    if (!verified) {
+      return jsonError(c, 401, 'メールアドレスまたはパスワードが違います')
+    }
+    const token = await issueToken(found.user, cfg)
+    setSessionCookie(c, token, cfg)
+    return c.json({ user: found.user })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.get('/api/auth/me', async (c) => {
+  const user = await authenticate(c)
+  if (!user) {
+    return jsonError(c, 401, 'unauthorized')
+  }
+  return c.json({ user })
+})
+
+app.post('/api/auth/logout', (c) => {
+  clearSessionCookie(c)
+  return c.json({ ok: true })
+})
+
+app.get('/api/chats', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+
+  try {
+    const chats = await fetchChats(c)
+    return c.json({ chats })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.post('/api/chats', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const user = c.get('user') as User | undefined
+
+  const payload = await readJson<{
+    id: string
+    target?: string
+    targets?: string[]
+    target_type?: string
+    display_name?: string
+    system_prompt?: string
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  const id = sanitizeAlias(payload.id)
+  if (!id) {
+    return jsonError(c, 400, 'id is required')
+  }
+  const targetType = normalizeTargetType(payload.target_type)
+  const targets = normalizeTargets(payload.targets, payload.target, targetType)
+  if (targets.length === 0) {
+    return jsonError(c, 400, 'at least one target is required')
+  }
+  const displayName = (payload.display_name || '').trim() || id
+  const systemPrompt = payload.system_prompt || ''
+  const ownerUserId = user?.id || null
+
+  try {
+    const statements = [
+      c.env.DB.prepare(
+        `INSERT INTO chat_profiles (id, target, target_type, display_name, system_prompt, owner_user_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`
+      ).bind(id, targets[0], targetType, displayName, systemPrompt, ownerUserId),
+      ...targets.map((t) =>
+        c.env.DB.prepare(
+          `INSERT INTO chat_targets (chat_id, target, created_at)
+           VALUES (?, ?, datetime('now'))`
+        ).bind(id, t)
+      )
+    ]
+    await c.env.DB.batch(statements)
+    const chat = await fetchChat(c, id)
+    return c.json(chat, 201)
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return jsonError(c, 409, 'id or target already exists')
+    }
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.get('/api/chats/:id', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const id = sanitizeAlias(c.req.param('id'))
+  try {
+    const chat = await fetchChat(c, id)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+    return c.json(chat)
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.put('/api/chats/:id', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const id = sanitizeAlias(c.req.param('id'))
+  const payload = await readJson<{
+    target?: string
+    targets?: string[]
+    target_type?: string
+    display_name?: string
+    system_prompt?: string
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  try {
+    const current = await fetchChat(c, id)
+    if (!current) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const sets: string[] = []
+    const params: any[] = []
+    let nextTargetType = current.target_type
+    let targetsProvided = false
+    let newTargets: string[] = []
+
+    if (payload.target_type !== undefined) {
+      nextTargetType = normalizeTargetType(payload.target_type)
+      sets.push('target_type = ?')
+      params.push(nextTargetType)
+    }
+    if (payload.targets !== undefined) {
+      targetsProvided = true
+      newTargets = normalizeTargets(payload.targets, undefined, nextTargetType)
+    }
+    if (payload.target !== undefined) {
+      targetsProvided = true
+      newTargets = normalizeTargets(undefined, payload.target, nextTargetType)
+    }
+    if (targetsProvided && newTargets.length === 0) {
+      return jsonError(c, 400, 'at least one target is required')
+    }
+    if (targetsProvided) {
+      sets.push('target = ?')
+      params.push(newTargets[0])
+    }
+    if (payload.display_name !== undefined) {
+      sets.push('display_name = ?')
+      params.push((payload.display_name || '').trim())
+    }
+    if (payload.system_prompt !== undefined) {
+      sets.push('system_prompt = ?')
+      params.push(payload.system_prompt || '')
+    }
+
+    if (sets.length === 0) {
+      return c.json({ updated: false })
+    }
+    sets.push("updated_at = datetime('now')")
+    const sql = `UPDATE chat_profiles SET ${sets.join(', ')} WHERE id = ?`
+    params.push(id)
+
+    const res = await c.env.DB.prepare(sql).bind(...params).run()
+    if (res.meta?.changes === 0) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    if (targetsProvided) {
+      await replaceTargets(c, id, newTargets)
+    }
+
+    const chat = await fetchChat(c, id)
+    return c.json(chat)
+  } catch (err) {
+    if (isUniqueConstraintError(err)) {
+      return jsonError(c, 409, 'target already exists')
+    }
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.delete('/api/chats/:id', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const id = sanitizeAlias(c.req.param('id'))
+
+  try {
+    const res = await c.env.DB.prepare('DELETE FROM chat_profiles WHERE id = ?').bind(id).run()
+    if (!res.meta || res.meta.changes === 0) {
+      return jsonError(c, 404, 'chat not found')
+    }
+    return c.json({ deleted: true })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.get('/api/knowledge', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const chatId = (c.req.query('chat_id') || '').trim()
+
+  try {
+    const items = await listKnowledge(c, chatId)
+    return c.json({ items })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.post('/api/knowledge/files', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+  const cfg = getConfig(c)
+
+  try {
+    const form = await c.req.formData()
+    const chatKey = pickFirstNonEmpty([
+      form.get('chat_id'),
+      form.get('domain'),
+      form.get('target')
+    ])
+    const titleRaw = form.get('title')
+    const title = typeof titleRaw === 'string' ? titleRaw.trim() : ''
+    if (!chatKey || typeof chatKey !== 'string') {
+      return jsonError(c, 400, 'chat_id or target is required')
+    }
+    const chat = await resolveChat(c, chatKey)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const file = form.get('file')
+    if (!(file instanceof File)) {
+      return jsonError(c, 400, 'file is required')
+    }
+    if (file.size > cfg.maxUploadBytes) {
+      return jsonError(c, 400, 'ファイルサイズが大きすぎます')
+    }
+
+    const recordId = await insertKnowledge(
+      c,
+      chat.id,
+      'file',
+      title,
+      '',
+      file.name,
+      file.name,
+      'pending'
+    )
+    await updateKnowledgeStatus(c, recordId, 'processing', '', file.name)
+
+    try {
+      const backend = await forwardFileToFlask(c, chat.id, file)
+      await updateKnowledgeStatus(c, recordId, 'succeeded', '', file.name)
+      return c.json({ id: recordId, status: 'succeeded', backend })
+    } catch (err) {
+      await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, file.name)
+      return jsonError(c, 502, 'Pythonサーバーへの送信に失敗しました: ' + (err as Error).message)
+    }
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.post('/api/knowledge/urls', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+
+  const payload = await readJson<{
+    chat_id?: string
+    url?: string
+    title?: string
+    target?: string
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+  const key = (payload.chat_id || payload.target || '').trim()
+  if (!key || !payload.url || !payload.url.trim()) {
+    return jsonError(c, 400, 'chat_id (or target) and url are required')
+  }
+
+  try {
+    const chat = await resolveChat(c, key)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+    const recordId = await insertKnowledge(
+      c,
+      chat.id,
+      'url',
+      payload.title || '',
+      payload.url,
+      '',
+      '',
+      'processing'
+    )
+    try {
+      const backend = await forwardJSONToFlask(c, '/api/fetch_url', {
+        chat_id: chat.id,
+        url: payload.url,
+        title: payload.title || ''
+      })
+      await updateKnowledgeStatus(c, recordId, 'succeeded', '', '')
+      return c.json({ id: recordId, status: 'succeeded', backend })
+    } catch (err) {
+      await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, '')
+      return jsonError(c, 502, 'Pythonサーバーへの送信に失敗しました: ' + (err as Error).message)
+    }
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.post('/api/knowledge/texts', async (c) => {
+  const guard = await ensureAdmin(c)
+  if (guard) return guard
+
+  const payload = await readJson<{
+    chat_id?: string
+    target?: string
+    title?: string
+    content?: string
+    category?: string
+    tags?: string[]
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+  const key = (payload.chat_id || payload.target || '').trim()
+  if (!key || !payload.content || !payload.content.trim()) {
+    return jsonError(c, 400, 'chat_id (or target) and content are required')
+  }
+
+  try {
+    const chat = await resolveChat(c, key)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+    const recordId = await insertKnowledge(
+      c,
+      chat.id,
+      'text',
+      payload.title || '',
+      '',
+      '',
+      '',
+      'processing'
+    )
+    try {
+      const backend = await forwardJSONToFlask(c, '/api/add_knowledge', {
+        chat_id: chat.id,
+        title: payload.title || '',
+        content: payload.content || '',
+        category: payload.category || '',
+        tags: payload.tags || []
+      })
+      await updateKnowledgeStatus(c, recordId, 'succeeded', '', '')
+      return c.json({ id: recordId, status: 'succeeded', backend })
+    } catch (err) {
+      await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, '')
+      return jsonError(c, 502, 'Pythonサーバーへの送信に失敗しました: ' + (err as Error).message)
+    }
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+export default app
+
+// --- helpers ---
+
+function getConfig(c: any): Config {
+  const cached = typeof c.get === 'function' ? c.get('config') : undefined
+  if (cached) return cached
+  const loaded = loadConfig(c.env)
+  if (typeof c.set === 'function') {
+    c.set('config', loaded)
+  }
+  return loaded
+}
+
+function loadConfig(env: Bindings): Config {
+  const get = (key: keyof Bindings, def: string) => {
+    const raw = env[key]
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      return raw.trim()
+    }
+    return def
+  }
+  const getBool = (key: keyof Bindings, def: boolean) => {
+    const raw = get(key, '')
+    if (!raw) return def
+    if (['1', 'true', 'yes', 'on'].includes(raw.toLowerCase())) return true
+    if (['0', 'false', 'no', 'off'].includes(raw.toLowerCase())) return false
+    return def
+  }
+  const getInt = (key: keyof Bindings, def: number) => {
+    const raw = get(key, '')
+    const n = Number(raw)
+    return Number.isFinite(n) && n > 0 ? n : def
+  }
+
+  const maxUploadMB = getInt('MGMT_MAX_UPLOAD_MB', 50)
+  return {
+    adminAPIKey: get('MGMT_ADMIN_API_KEY', ''),
+    flaskBaseURL: get('MGMT_FLASK_BASE_URL', 'http://localhost:8000').replace(/\/+$/, ''),
+    flaskAdminKey: get('MGMT_FLASK_ADMIN_KEY', ''),
+    maxUploadBytes: maxUploadMB * 1024 * 1024,
+    requestTimeoutSec: getInt('MGMT_HTTP_TIMEOUT_SEC', 120),
+    authSecret: get('MGMT_AUTH_SECRET', 'dev-secret-change-me'),
+    allowOpenSignup: getBool('MGMT_ALLOW_OPEN_SIGNUP', true),
+    allowedOrigins: parseOrigins(get('MGMT_ALLOWED_ORIGINS', 'http://localhost:5173')),
+    cookieSecure: getBool('MGMT_COOKIE_SECURE', false)
+  }
+}
+
+async function readJson<T>(c: { req: Request }): Promise<T | null> {
+  try {
+    return await c.req.json<T>()
+  } catch (err) {
+    console.error('failed to parse json', err)
+    return null
+  }
+}
+
+function jsonError(c: any, status: number, message: string) {
+  return c.json({ error: message }, status)
+}
+
+function serverError(c: any) {
+  return jsonError(c, 500, 'internal server error')
+}
+
+async function ensureAdmin(c: any) {
+  const cfg = getConfig(c)
+  const provided = c.req.header('X-Admin-API-Key') || c.req.query('admin_api_key') || ''
+  if (cfg.adminAPIKey && provided === cfg.adminAPIKey) {
+    return null
+  }
+  const user = await authenticate(c)
+  if (!user) {
+    return jsonError(c, 401, 'login required')
+  }
+  if (!user.is_admin) {
+    return jsonError(c, 403, 'admin only')
+  }
+  c.set('user', user)
+  return null
+}
+
+async function authenticate(c: any): Promise<User | null> {
+  const cfg = getConfig(c)
+  const cookieToken = getCookie(c, 'mgmt_session') || ''
+  const authHeader = c.req.header('Authorization') || ''
+  let token = cookieToken
+  if (!token && authHeader.toLowerCase().startsWith('bearer ')) {
+    token = authHeader.slice(7).trim()
+  }
+  if (!token) {
+    return null
+  }
+
+  try {
+    const payload = (await verify(token, cfg.authSecret)) as any
+    const sub = typeof payload.sub === 'string' ? payload.sub : ''
+    if (!sub) return null
+    const user = await fetchUserById(c, sub)
+    return user
+  } catch (err) {
+    console.error('failed to verify token', err)
+    return null
+  }
+}
+
+async function issueToken(user: User, cfg: Config) {
+  const now = Math.floor(Date.now() / 1000)
+  return sign(
+    { sub: user.id, email: user.email, is_admin: user.is_admin, iat: now, exp: now + sessionTTLSeconds },
+    cfg.authSecret
+  )
+}
+
+function setSessionCookie(c: any, token: string, cfg: Config) {
+  setCookie(c, 'mgmt_session', token, {
+    path: '/',
+    httpOnly: true,
+    maxAge: sessionTTLSeconds,
+    secure: cfg.cookieSecure,
+    sameSite: cfg.cookieSecure ? 'None' : 'Lax'
+  })
+}
+
+function clearSessionCookie(c: any) {
+  deleteCookie(c, 'mgmt_session', { path: '/' })
+}
+
+async function countUsers(c: any): Promise<number> {
+  const row = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>()
+  return row?.count ?? 0
+}
+
+async function fetchUserById(c: any, id: string): Promise<User | null> {
+  const row = await c.env.DB.prepare(
+    'SELECT id, email, is_admin, created_at, updated_at FROM users WHERE id = ?'
+  )
+    .bind(id)
+    .first<any>()
+  if (!row) return null
+  return mapUserRow(row)
+}
+
+async function fetchUserWithPasswordByEmail(
+  c: any,
+  email: string
+): Promise<{ user: User; passwordHash: string } | null> {
+  const row = await c.env.DB.prepare(
+    'SELECT id, email, password_hash, is_admin, created_at, updated_at FROM users WHERE email = ?'
+  )
+    .bind(email)
+    .first<any>()
+  if (!row) return null
+  const user = mapUserRow(row)
+  return { user, passwordHash: row.password_hash as string }
+}
+
+function mapUserRow(row: any): User {
+  return {
+    id: row.id as string,
+    email: row.email as string,
+    is_admin: Boolean(row.is_admin),
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string
+  }
+}
+
+async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, [
+    'deriveBits'
+  ])
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+    keyMaterial,
+    32 * 8
+  )
+  const derived = new Uint8Array(derivedBits)
+  return `${toBase64(salt)}:${toBase64(derived)}`
+}
+
+async function verifyPassword(hash: string, password: string): Promise<boolean> {
+  const [saltB64, digestB64] = hash.split(':')
+  if (!saltB64 || !digestB64) return false
+  const salt = fromBase64(saltB64)
+  const expected = fromBase64(digestB64)
+  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, [
+    'deriveBits'
+  ])
+  const derivedBits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+    keyMaterial,
+    expected.length * 8
+  )
+  const derived = new Uint8Array(derivedBits)
+  return timingSafeEqual(derived, expected)
+}
+
+function toBase64(data: Uint8Array): string {
+  let str = ''
+  for (const byte of data) {
+    str += String.fromCharCode(byte)
+  }
+  return btoa(str)
+}
+
+function fromBase64(value: string): Uint8Array {
+  const bin = atob(value)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i)
+  }
+  return out
+}
+
+function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i]
+  }
+  return diff === 0
+}
+
+async function fetchChats(c: any): Promise<ChatProfile[]> {
+  const result = await c.env.DB.prepare(
+    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+            GROUP_CONCAT(DISTINCT ct.target) AS targets
+     FROM chat_profiles cp
+     LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
+     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
+     ORDER BY cp.created_at ASC`
+  ).all<any>()
+  const rows = result.results || []
+  return rows.map(mapChatRow)
+}
+
+async function fetchChat(c: any, id: string): Promise<ChatProfile | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+            GROUP_CONCAT(DISTINCT ct.target) AS targets
+     FROM chat_profiles cp
+     LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
+     WHERE cp.id = ?
+     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
+  )
+    .bind(id)
+    .first<any>()
+  if (!row) return null
+  return mapChatRow(row)
+}
+
+async function fetchChatByTarget(c: any, target: string): Promise<ChatProfile | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+            GROUP_CONCAT(DISTINCT ct.target) AS targets
+     FROM chat_targets ct
+     JOIN chat_profiles cp ON cp.id = ct.chat_id
+     WHERE ct.target = ?
+     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
+  )
+    .bind(target)
+    .first<any>()
+  if (!row) return null
+  return mapChatRow(row)
+}
+
+async function resolveChat(c: any, key: string): Promise<ChatProfile | null> {
+  const sanitized = sanitizeAlias(key)
+  if (sanitized) {
+    const byId = await fetchChat(c, sanitized)
+    if (byId) return byId
+  }
+  const normalizedTarget = normalizeTarget(key, 'web')
+  if (normalizedTarget) {
+    const byTarget = await fetchChatByTarget(c, normalizedTarget)
+    if (byTarget) return byTarget
+  }
+  return null
+}
+
+function mapChatRow(row: any): ChatProfile {
+  const targetsRaw = (row.targets as string) || ''
+  const targets = targetsRaw
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean)
+  return {
+    id: row.id as string,
+    target: row.target as string,
+    target_type: row.target_type as string,
+    display_name: row.display_name as string,
+    system_prompt: row.system_prompt as string,
+    targets,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string
+  }
+}
+
+async function replaceTargets(c: any, chatId: string, targets: string[]) {
+  const statements = [
+    c.env.DB.prepare('DELETE FROM chat_targets WHERE chat_id = ?').bind(chatId),
+    ...targets.map((t) =>
+      c.env.DB.prepare(
+        `INSERT INTO chat_targets (chat_id, target, created_at)
+         VALUES (?, ?, datetime('now'))`
+      ).bind(chatId, t)
+    )
+  ]
+  await c.env.DB.batch(statements)
+}
+
+async function listKnowledge(c: any, chatId: string): Promise<KnowledgeAsset[]> {
+  const base = `SELECT id, chat_id, type, title, source_url, original_filename, storage_path, status, embedding_count, error_message, created_at, updated_at
+                FROM knowledge_assets`
+  const stmt =
+    chatId && chatId.trim() !== ''
+      ? c.env.DB.prepare(`${base} WHERE chat_id = ? ORDER BY created_at DESC LIMIT 200`).bind(chatId)
+      : c.env.DB.prepare(`${base} ORDER BY created_at DESC LIMIT 200`)
+  const result = await stmt.all<any>()
+  const rows = result.results || []
+  return rows.map((row) => ({
+    id: row.id as string,
+    chat_id: row.chat_id as string,
+    type: row.type as string,
+    title: row.title || undefined,
+    source_url: row.source_url || undefined,
+    original_filename: row.original_filename || undefined,
+    storage_path: row.storage_path || undefined,
+    status: row.status as string,
+    embedding_count: Number(row.embedding_count ?? 0),
+    error_message: row.error_message || undefined,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string
+  }))
+}
+
+async function insertKnowledge(
+  c: any,
+  chatId: string,
+  kind: string,
+  title: string,
+  srcURL: string,
+  origName: string,
+  storagePath: string,
+  status: string
+): Promise<string> {
+  const id = crypto.randomUUID()
+  await c.env.DB.prepare(
+    `INSERT INTO knowledge_assets (id, chat_id, type, title, source_url, original_filename, storage_path, status, created_at, updated_at)
+     VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, datetime('now'), datetime('now'))`
+  )
+    .bind(id, chatId, kind, title, srcURL, origName, storagePath, status)
+    .run()
+  return id
+}
+
+async function updateKnowledgeStatus(
+  c: any,
+  id: string,
+  status: string,
+  errMsg: string,
+  storagePath: string
+): Promise<void> {
+  await c.env.DB.prepare(
+    `UPDATE knowledge_assets
+     SET status = ?,
+         error_message = NULLIF(?, ''),
+         storage_path = COALESCE(NULLIF(?, ''), storage_path),
+         updated_at = datetime('now')
+     WHERE id = ?`
+  )
+    .bind(status, errMsg, storagePath, id)
+    .run()
+}
+
+async function forwardFileToFlask(c: any, chatId: string, file: File) {
+  const cfg = getConfig(c)
+  const form = new FormData()
+  form.append('file', file, file.name)
+  form.append('chat_id', chatId)
+
+  const reqInit: RequestInit = {
+    method: 'POST',
+    body: form,
+    headers: {}
+  }
+  if (cfg.flaskAdminKey) {
+    ;(reqInit.headers as Record<string, string>)['X-Admin-API-Key'] = cfg.flaskAdminKey
+  }
+  return doRequest(c, cfg.flaskBaseURL + '/api/upload_file', reqInit)
+}
+
+async function forwardJSONToFlask(c: any, path: string, payload: Record<string, any>) {
+  const cfg = getConfig(c)
+  const reqInit: RequestInit = {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'Content-Type': 'application/json' }
+  }
+  if (cfg.flaskAdminKey) {
+    ;(reqInit.headers as Record<string, string>)['X-Admin-API-Key'] = cfg.flaskAdminKey
+  }
+  return doRequest(c, cfg.flaskBaseURL + path, reqInit)
+}
+
+async function doRequest(c: any, url: string, init: RequestInit) {
+  const cfg = getConfig(c)
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), cfg.requestTimeoutSec * 1000)
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal })
+    const text = await res.text()
+    const parsed = text ? safeParseJSON(text) : null
+    if (!res.ok) {
+      const msg = (parsed && parsed.error) || res.statusText
+      throw new Error(`backend returned ${res.status}: ${msg}`)
+    }
+    return parsed
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function safeParseJSON(text: string) {
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+function normalizeTargetType(kind?: string): string {
+  const val = (kind || '').trim().toLowerCase()
+  if (!val) return 'web'
+  if (val === 'web' || val === 'line' || val === 'custom') return val
+  return 'custom'
+}
+
+function normalizeTarget(target: string | undefined, targetType: string): string {
+  const kind = normalizeTargetType(targetType)
+  if (kind === 'web') {
+    return normalizeDomain(target || '')
+  }
+  return (target || '').trim()
+}
+
+function normalizeTargets(list?: string[], fallback?: string, targetType?: string): string[] {
+  const kind = normalizeTargetType(targetType)
+  const values = [...(list || []), fallback || '']
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const val of values) {
+    const norm = normalizeTarget(val, kind)
+    if (!norm || seen.has(norm)) continue
+    seen.add(norm)
+    out.push(norm)
+  }
+  return out
+}
+
+function normalizeDomain(value: string): string {
+  let v = value.trim().toLowerCase()
+  if (!v) return ''
+  v = v.replace(/^https?:\/\//, '')
+  if (v.includes('/')) v = v.split('/')[0]
+  if (v.includes(':')) v = v.split(':')[0]
+  v = v.replace(/^\.+/, '')
+  if (v.startsWith('www.')) v = v.slice(4)
+  return v
+}
+
+function sanitizeAlias(id: string | undefined): string {
+  if (!id) return ''
+  let v = id.trim().toLowerCase()
+  v = v.replace(/[\\/]/g, '-')
+  v = v.replace(/\s+/g, '-')
+  return v
+}
+
+function parseOrigins(raw: string): string[] {
+  const parts = raw.split(',').map((p) => p.trim()).filter(Boolean)
+  if (parts.length === 0) {
+    return ['http://localhost:5173']
+  }
+  return Array.from(new Set(parts))
+}
+
+function originAllowed(origin: string, allowed: string[]): boolean {
+  if (!origin) return false
+  return allowed.includes('*') || allowed.includes(origin)
+}
+
+function isUniqueConstraintError(err: unknown): boolean {
+  return err instanceof Error && err.message.toLowerCase().includes('unique')
+}
+
+function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntryValue | null {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim() !== '') return v
+    if (v instanceof File && v.name) return v
+  }
+  return null
+}
