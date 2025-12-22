@@ -9,9 +9,9 @@ from sentence_transformers import SentenceTransformer
 
 import settings
 from ai_agent import AIAgent
-from auth import issue_session_token, require_admin_auth, require_tenant_session
+from auth import require_admin_auth, require_domain_session
+from domain_registry import DomainRegistry
 from file_utils import add_manual_knowledge, handle_file_upload, handle_url_fetch
-from tenant_registry import TenantRegistry
 
 
 app = Flask(__name__)
@@ -19,7 +19,14 @@ CORS(app)
 
 qdrant_client = None
 embedding_model = None
-tenant_registry = TenantRegistry(settings.TENANT_CONFIG_PATH)
+if not settings.MGMT_API_BASE_URL:
+    raise ValueError("MGMT_API_BASE_URL must be set to use the management API registry")
+domain_registry = DomainRegistry(
+    settings.MGMT_API_BASE_URL,
+    settings.MGMT_ADMIN_API_KEY,
+    cache_ttl=settings.MGMT_API_CACHE_TTL,
+    timeout=settings.MGMT_API_TIMEOUT_SEC,
+)
 ai_agent = AIAgent()
 
 
@@ -84,16 +91,16 @@ init_qdrant()
 
 
 @app.route('/api/chat', methods=['POST'])
-@require_tenant_session(tenant_registry)
+@require_domain_session(domain_registry)
 def chat():
     try:
         data = request.get_json() or {}
         query = data.get('message', '')
-        tenant = getattr(g, 'tenant', {})
-        tenant_id = tenant.get('id')
-        if not tenant_id:
-            return jsonify({'error': 'Tenant configuration is invalid'}), 500
-        system_prompt = tenant.get('system_prompt')
+        chat_entry = getattr(g, 'chat', {})
+        chat_id = chat_entry.get('id')
+        if not chat_id:
+            return jsonify({'error': 'Chat configuration is invalid'}), 500
+        system_prompt = chat_entry.get('system_prompt')
 
         context = ""
         context_found = False
@@ -105,8 +112,8 @@ def chat():
                 search_filter = Filter(
                     must=[
                         FieldCondition(
-                            key="tenant_id",
-                            match=MatchValue(value=tenant_id),
+                            key="chat_id",
+                            match=MatchValue(value=chat_id),
                         )
                     ],
                     must_not=[
@@ -156,7 +163,7 @@ def chat():
             'sources_used': len(context.split("\n---\n")) if context_found else 0,
         }
         if os.getenv('FLASK_ENV') == 'development':
-            response_data['tenant_id'] = tenant_id
+            response_data['chat_id'] = chat_id
 
         return jsonify(response_data)
 
@@ -179,23 +186,23 @@ def public_init():
     if not host:
         host = request.host
 
-    host = tenant_registry._normalize_domain(host)
+    host = domain_registry._normalize_domain(host)
     if not host:
         return jsonify({'ok': False, 'error': 'Invalid host'}), 400
 
-    tenant = tenant_registry.find_by_host(host)
-    if not tenant:
+    chat_entry = domain_registry.find_by_host(host)
+    if not chat_entry:
         return jsonify({'ok': False})
 
-    tenant_id = tenant.get('id')
-    token = issue_session_token(tenant_id, host)
+    chat_id = chat_entry.get('id')
     return jsonify({
         'ok': True,
-        'sessionToken': token,
-        'tenant': {
-            'id': tenant_id,
-            'name': tenant.get('name'),
-        },
+        'chatId': chat_id,
+        'chat_id': chat_id,
+        'chat': {
+            'id': chat_id,
+            'display_name': chat_entry.get('display_name'),
+        }
     })
 
 
@@ -206,11 +213,11 @@ def add_knowledge():
         data = request.get_json() or {}
         content = data.get('content', '')
         title = data.get('title', '')
-        tenant_id = data.get('tenant_id')
-        if not tenant_id:
-            return jsonify({'error': 'tenant_id is required'}), 400
-        if not tenant_registry.get(tenant_id):
-            return jsonify({'error': 'Unknown tenant_id'}), 404
+        chat_id = data.get('chat_id') or data.get('domain')
+        if not chat_id:
+            return jsonify({'error': 'chat_id is required'}), 400
+        if not domain_registry.resolve(chat_id):
+            return jsonify({'error': 'Unknown chat_id'}), 404
         category = data.get('category')
         tags = data.get('tags') if isinstance(data.get('tags'), list) else []
 
@@ -219,7 +226,7 @@ def add_knowledge():
                 result, status = add_manual_knowledge(
                     content,
                     title,
-                    tenant_id,
+                    chat_id,
                     category,
                     tags,
                     qdrant_client,
@@ -239,16 +246,16 @@ def add_knowledge():
 @require_admin_auth
 def upload_file():
     try:
-        tenant_id = request.form.get('tenant_id') or request.form.get('tenantId')
-        if not tenant_id:
-            return jsonify({'error': 'tenant_id is required'}), 400
-        if not tenant_registry.get(tenant_id):
-            return jsonify({'error': 'Unknown tenant_id'}), 404
+        chat_id = request.form.get('chat_id') or request.form.get('tenant_id') or request.form.get('tenantId')
+        if not chat_id:
+            return jsonify({'error': 'chat_id is required'}), 400
+        if not domain_registry.resolve(chat_id):
+            return jsonify({'error': 'Unknown chat_id'}), 404
         if 'file' not in request.files:
             return jsonify({'error': 'ファイルが選択されていません'}), 400
 
         file = request.files['file']
-        result, status = handle_file_upload(file, tenant_id, qdrant_client, embedding_model)
+        result, status = handle_file_upload(file, chat_id, qdrant_client, embedding_model)
         return jsonify(result), status
     except Exception as e:
         return jsonify({'error': f'アップロードエラー: {str(e)}'}), 500
@@ -261,11 +268,11 @@ def fetch_url():
         data = request.get_json() or {}
         url = data.get('url', '').strip()
         custom_title = data.get('title', '').strip()
-        tenant_id = data.get('tenant_id')
-        if not tenant_id:
-            return jsonify({'error': 'tenant_id is required'}), 400
-        if not tenant_registry.get(tenant_id):
-            return jsonify({'error': 'Unknown tenant_id'}), 404
+        chat_id = data.get('chat_id') or data.get('tenant_id')
+        if not chat_id:
+            return jsonify({'error': 'chat_id is required'}), 400
+        if not domain_registry.resolve(chat_id):
+            return jsonify({'error': 'Unknown chat_id'}), 404
 
         if not url:
             return jsonify({'error': 'URLが入力されていません'}), 400
@@ -274,7 +281,7 @@ def fetch_url():
             result, status = handle_url_fetch(
                 url,
                 custom_title,
-                tenant_id,
+                chat_id,
                 qdrant_client,
                 embedding_model,
             )
