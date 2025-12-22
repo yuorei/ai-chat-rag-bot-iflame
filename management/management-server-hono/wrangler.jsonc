@@ -5,7 +5,6 @@
   "compatibility_date": "2025-12-16",
   "vars": {
     "MGMT_FLASK_BASE_URL": "http://localhost:8000",
-    "MGMT_FLASK_ADMIN_KEY": "",
     "MGMT_ADMIN_API_KEY": "",
     "MGMT_AUTH_SECRET": "dev-secret-change-me",
     "MGMT_ALLOWED_ORIGINS": "http://localhost:5173",

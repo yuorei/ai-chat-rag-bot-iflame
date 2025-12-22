@@ -29,7 +29,6 @@ type Bindings = {
   DB: D1Database
   MGMT_ADMIN_API_KEY?: string
   MGMT_FLASK_BASE_URL?: string
-  MGMT_FLASK_ADMIN_KEY?: string
   MGMT_AUTH_SECRET?: string
   MGMT_ALLOW_OPEN_SIGNUP?: string
   MGMT_ALLOWED_ORIGINS?: string
@@ -46,7 +45,6 @@ type Variables = {
 type Config = {
   adminAPIKey: string
   flaskBaseURL: string
-  flaskAdminKey: string
   maxUploadBytes: number
   requestTimeoutSec: number
   authSecret: string
@@ -606,7 +604,6 @@ function loadConfig(env: Bindings): Config {
   return {
     adminAPIKey: get('MGMT_ADMIN_API_KEY', ''),
     flaskBaseURL: get('MGMT_FLASK_BASE_URL', 'http://localhost:8000').replace(/\/+$/, ''),
-    flaskAdminKey: get('MGMT_FLASK_ADMIN_KEY', ''),
     maxUploadBytes: maxUploadMB * 1024 * 1024,
     requestTimeoutSec: getInt('MGMT_HTTP_TIMEOUT_SEC', 120),
     authSecret: get('MGMT_AUTH_SECRET', 'dev-secret-change-me'),
@@ -955,9 +952,6 @@ async function forwardFileToFlask(c: any, chatId: string, file: File) {
     body: form,
     headers: {}
   }
-  if (cfg.flaskAdminKey) {
-    ;(reqInit.headers as Record<string, string>)['X-Admin-API-Key'] = cfg.flaskAdminKey
-  }
   return doRequest(c, cfg.flaskBaseURL + '/api/upload_file', reqInit)
 }
 
@@ -967,9 +961,6 @@ async function forwardJSONToFlask(c: any, path: string, payload: Record<string, 
     method: 'POST',
     body: JSON.stringify(payload),
     headers: { 'Content-Type': 'application/json' }
-  }
-  if (cfg.flaskAdminKey) {
-    ;(reqInit.headers as Record<string, string>)['X-Admin-API-Key'] = cfg.flaskAdminKey
   }
   return doRequest(c, cfg.flaskBaseURL + path, reqInit)
 }
