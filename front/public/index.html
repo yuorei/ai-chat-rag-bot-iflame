@@ -204,33 +204,15 @@
 
     <script>
         const urlParams = new URLSearchParams(window.location.search);
-        const SESSION_TOKEN = urlParams.get('token');
+        const CHAT_ID = urlParams.get('chatId') || urlParams.get('chat_id') || urlParams.get('tenantId') || urlParams.get('tenant_id');
         const apiBaseParam = urlParams.get('apiBase');
         const API_BASE = normalizeApiBase(apiBaseParam || window.location.origin);
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
 
-        if (!SESSION_TOKEN) {
-            lockChatForMissingToken();
-        }
-
         function normalizeApiBase(value) {
             if (!value) return '';
             return value.endsWith('/') ? value.slice(0, -1) : value;
-        }
-
-        function lockChatForMissingToken() {
-            if (messageInput) {
-                messageInput.disabled = true;
-                messageInput.placeholder = 'このチャットは有効なトークンが必要です';
-            }
-            if (sendButton) {
-                sendButton.disabled = true;
-            }
-            const firstMessage = document.querySelector('.bot-message .message-content');
-            if (firstMessage) {
-                firstMessage.textContent = 'チャットウィジェットのトークンが見つかりません。提供されたスニペットで読み込まれているか確認してください。';
-            }
         }
 
         function addMessage(content, isUser = false, isThinking = false) {
@@ -274,10 +256,6 @@
             const input = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
 
-            if (!SESSION_TOKEN) {
-                return;
-            }
-
             if (!input.value.trim()) return;
 
             const message = input.value;
@@ -296,13 +274,17 @@
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
             try {
-                const response = await fetch(`${API_BASE}/api/chat`, {
+                const payload = { message };
+                if (CHAT_ID) {
+                    payload.chat_id = CHAT_ID;
+                }
+
+                const response = await fetch(`${API_BASE}/chat`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${SESSION_TOKEN}`
+                        'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ message })
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();

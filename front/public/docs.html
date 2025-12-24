@@ -346,12 +346,12 @@
                     <h3>0. 事前準備：テナントを特定</h3>
                     <ol>
                         <li><a href="upload.html">アップロードページ</a>を社内ネットワークから開き、この画面は一般公開しないようにします</li>
-                        <li><code>data/tenants.json</code>に登録されている<code>id</code>、もしくは運用担当者から共有されたテナントIDを確認します</li>
+                        <li>管理API/管理UIで発行されたチャットID（chat_id）、もしくは運用担当者から共有されたチャットIDを確認します</li>
                         <li>ページ上部の「テナントID」に入力し、以降の操作をすべて対象テナントに紐づけます</li>
                     </ol>
                     <div class="highlight-box warning">
                         <strong>⚠️ 認証について</strong>
-                        <p>アップロードAPIは管理者専用です。.envで<code>ADMIN_API_KEY</code>を設定している場合は、ブラウザからアクセスするときも必ず<code>X-Admin-API-Key</code>ヘッダーを付与してください（リバースプロキシやブラウザ拡張機能などで付与できます）。</p>
+                        <p>現在は認証を無効化しているため、アップロードAPIはキー不要です。本番公開時は必ずアクセス制限を付けてください。</p>
                     </div>
                     <h3>1. 最も簡単な方法：手動入力</h3>
                     <ol>
@@ -737,11 +737,11 @@ response = requests.get('/api/users')
                         <li>ブラウザを再起動して再試行</li>
                     </ul>
 
-                    <h4>❓ 「Unknown tenant」や401/403エラーになる</h4>
+                    <h4>❓ 「Unknown tenant」や404エラーになる</h4>
                     <ul>
-                        <li>入力したテナントIDが<code>data/tenants.json</code>に存在するか確認</li>
+                        <li>入力したチャットIDが管理APIのチャット一覧に存在するか確認</li>
                         <li>ホスト名の許可リストに現在アクセス中のドメインが含まれているか確認</li>
-                        <li>.envで<code>ADMIN_API_KEY</code>を設定している場合は、リクエストに<code>X-Admin-API-Key</code>ヘッダーを付与する</li>
+                        <li>chat_idが管理APIのチャット一覧と一致しているか確認</li>
                     </ul>
 
                     <h4>❓ PDFの内容が正しく認識されない</h4>

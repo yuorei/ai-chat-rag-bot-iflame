@@ -6,8 +6,8 @@
 
   const scriptEl = document.currentScript;
   const globalConfig = window.IFRAME_WIDGET_CONFIG || {
-    apiBaseUrl: 'http://localhost:8000',
-    widgetBaseUrl: 'http://localhost:3000'
+    apiBaseUrl: 'https://cfw-iframe.example.com',
+    widgetBaseUrl: 'https://ai-chat.example.com'
   };
   const dataset = scriptEl ? scriptEl.dataset : {};
 
@@ -25,14 +25,7 @@
     if (dataset.widgetBase) {
       return normalizeBase(dataset.widgetBase);
     }
-    if (scriptEl && scriptEl.src) {
-      try {
-        const srcUrl = new URL(scriptEl.src, window.location.origin);
-        return `${srcUrl.origin}`;
-      } catch (e) {
-        console.warn('[iframe-widget] Failed to parse script src', e);
-      }
-    }
+    // ホスティングされているドメインを使用
     return normalizeBase(window.location.origin);
   }
 
@@ -57,7 +50,7 @@
     }
   }
 
-  function mountWidget(sessionToken) {
+  function mountWidget(chatId) {
     if (document.getElementById('iframe-widget-frame')) {
       return;
     }
@@ -86,7 +79,8 @@
 
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe-widget-frame';
-    iframe.src = `${widgetBase}/index.html?token=${encodeURIComponent(sessionToken)}&apiBase=${encodeURIComponent(apiBase)}`;
+    const chatQuery = chatId ? `chatId=${encodeURIComponent(chatId)}&` : '';
+    iframe.src = `${widgetBase}/index.html?${chatQuery}apiBase=${encodeURIComponent(apiBase)}`;
     iframe.style.position = 'fixed';
     iframe.style.right = dataset.right || (isMobile ? '10px' : '20px');
     iframe.style.bottom = iframeBottom + 'px'; // ★ ボタンより上に配置
@@ -214,10 +208,10 @@
     document.body.appendChild(messageBanner);
   }
 
-  function requestSessionToken() {
+  function requestChatId() {
     // セキュリティ: ホスト情報はサーバー側でOriginヘッダーから取得するため、
     // リクエストボディやカスタムヘッダーには含めない
-    return fetch(`${apiBase}/public/init`, {
+    return fetch(`${apiBase}/init`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -230,17 +224,21 @@
         return res.json();
       })
       .then((data) => {
-        if (!data.ok) {
-          throw new Error('No tenant matched for this domain');
+        if (data.error) {
+          throw new Error(data.error);
         }
-        return data.sessionToken;
+        const chatId = data.chat_id || data.chatId || (data.chat && data.chat.id);
+        if (!chatId) {
+          throw new Error('Chat ID is missing');
+        }
+        return chatId;
       });
   }
 
   function start() {
-    requestSessionToken()
-      .then((token) => {
-        mountWidget(token);
+    requestChatId()
+      .then((chatId) => {
+        mountWidget(chatId);
         window.dispatchEvent(new CustomEvent('iframe-widget-ready'));
       })
       .catch((err) => {

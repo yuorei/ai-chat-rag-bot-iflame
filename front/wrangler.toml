@@ -1,0 +1,9 @@
+name = "ai-chat-iframe-front"
+account_id = "8e457b2c3f9afaecffcc07978c972b96"
+compatibility_date = "2025-12-07"
+
+# 静的ファイルが置いてあるディレクトリを指定
+assets = { directory = "./public" }
+
+# オプション: SPA や 404 ページ対応が欲しいなら設定
+# assets = { directory = "./public", not_found_handling = "single-page-application" }
