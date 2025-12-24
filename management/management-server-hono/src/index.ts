@@ -738,7 +738,7 @@ async function hashPassword(password: string): Promise<string> {
     'deriveBits'
   ])
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     32 * 8
   )
@@ -755,7 +755,8 @@ async function verifyPassword(hash: string, password: string): Promise<boolean> 
     'deriveBits'
   ])
   const derivedBits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 310000, hash: 'SHA-256' },
+    // 100000 までしか対応していない環境のため
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     expected.length * 8
   )
