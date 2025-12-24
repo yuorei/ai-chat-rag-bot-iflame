@@ -1,79 +1,126 @@
-# Welcome to React Router!
+# management-web
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Cloudflare Workers + React Router v7 で構築された管理ダッシュボード UI。
 
-## Features
+## 概要
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
+RAG チャットボットシステムの管理画面。チャットプロファイルの作成・編集、ナレッジアセットの登録 (ファイル/URL/テキスト) などを行う。
 
-## Getting Started
+## 技術スタック
 
-### Installation
+- **Runtime**: Cloudflare Workers
+- **Framework**: React Router v7 (SSR)
+- **Styling**: Tailwind CSS v4
+- **Language**: TypeScript
 
-Install the dependencies:
+## デプロイ先
+
+- **Production**: Cloudflare Workers (wrangler deploy)
+
+## セットアップ
 
 ```bash
 npm install
 ```
 
-### Development
-
-Start the development server with HMR:
+### 開発
 
 ```bash
 npm run dev
 ```
 
-Your application will be available at `http://localhost:5173`.
+開発サーバーが起動し、`http://localhost:5173` でアクセス可能。
 
-## Previewing the Production Build
-
-Preview the production build locally:
-
-```bash
-npm run preview
-```
-
-## Building for Production
-
-Create a production build:
+### ビルド
 
 ```bash
 npm run build
 ```
 
-## Deployment
+### デプロイ
 
-Deployment is done using the Wrangler CLI.
-
-To build and deploy directly to production:
-
-```sh
+```bash
 npm run deploy
 ```
 
-To deploy a preview URL:
+## ディレクトリ構成
 
-```sh
-npx wrangler versions upload
+```
+management-web/
+├── app/
+│   ├── routes/           # ページコンポーネント
+│   │   ├── _index.tsx    # トップ (ダッシュボードへリダイレクト)
+│   │   ├── login.tsx     # ログインページ
+│   │   ├── register.tsx  # ユーザー登録ページ
+│   │   └── dashboard.tsx # 管理ダッシュボード
+│   ├── lib/
+│   │   └── api.ts        # API クライアント
+│   ├── root.tsx          # アプリケーションルート
+│   ├── routes.ts         # ルート設定
+│   └── app.css           # グローバルスタイル
+├── workers/
+│   └── app.ts            # Cloudflare Worker エントリーポイント
+├── public/               # 静的ファイル
+├── wrangler.jsonc        # Wrangler 設定
+└── package.json
 ```
 
-You can then promote a version to production after verification or roll it out progressively.
+## 画面構成
 
-```sh
-npx wrangler versions deploy
+### ログイン (`/login`)
+- メールアドレス / パスワードでログイン
+- Cookie セッションで認証状態を管理
+
+### ユーザー登録 (`/register`)
+- 新規ユーザー登録
+- 最初のユーザーは自動的に管理者になる
+
+### ダッシュボード (`/dashboard`)
+- **チャット管理**: チャットプロファイルの一覧・作成・編集・削除
+- **ナレッジ管理**: ファイルアップロード、URL 登録、テキスト登録
+- 各チャットに紐づくナレッジアセットの確認
+
+## 環境変数
+
+| 変数名 | 説明 | デフォルト |
+|--------|------|-----------|
+| `VITE_MANAGEMENT_API_BASE_URL` | 管理 API のベース URL | `http://localhost:8100` |
+
+開発時は `.env` ファイルに設定可能:
+
+```env
+VITE_MANAGEMENT_API_BASE_URL=http://localhost:8100
 ```
 
-## Styling
+本番環境では `window.__MGMT_API_BASE__` をセットすることで動的に変更可能。
 
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
+## API クライアント
 
----
+`app/lib/api.ts` で管理 API (`management-server-hono`) との通信を行う。
 
-Built with ❤️ using React Router.
+```typescript
+import { apiFetch } from "~/lib/api";
+
+// ログイン
+await apiFetch("/api/auth/login", {
+  method: "POST",
+  body: JSON.stringify({ email, password }),
+});
+
+// チャット一覧取得
+const { chats } = await apiFetch("/api/chats");
+```
+
+- Cookie (`mgmt_session`) による認証
+- 401 エラー時は `AuthError` をスロー
+
+## npm scripts
+
+| コマンド | 説明 |
+|----------|------|
+| `npm run dev` | 開発サーバー起動 |
+| `npm run build` | プロダクションビルド |
+| `npm run preview` | ビルド後のプレビュー |
+| `npm run deploy` | Cloudflare Workers へデプロイ |
+| `npm run cf-typegen` | Wrangler 型生成 |
+| `npm run typecheck` | 型チェック |
