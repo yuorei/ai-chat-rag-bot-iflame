@@ -8,6 +8,7 @@ class TenantRegistry:
         self.config_path = config_path
         self.tenants = {}
         self.domain_map = {}
+        self._last_mtime = None
         self.reload()
 
     def reload(self):
@@ -48,11 +49,17 @@ class TenantRegistry:
 
         self.tenants = tenants
         self.domain_map = domain_map
+        try:
+            self._last_mtime = os.path.getmtime(self.config_path)
+        except OSError:
+            self._last_mtime = None
 
     def get(self, tenant_id):
+        self._ensure_latest()
         return self.tenants.get(tenant_id)
 
     def find_by_host(self, host):
+        self._ensure_latest()
         for candidate in self._candidate_domains(host):
             tenant_id = self.domain_map.get(candidate)
             if tenant_id:
@@ -83,3 +90,13 @@ class TenantRegistry:
         if value.startswith('.'):  # remove leading dot
             value = value[1:]
         return value or None
+
+    def _ensure_latest(self):
+        if not self.config_path:
+            return
+        try:
+            mtime = os.path.getmtime(self.config_path)
+        except OSError:
+            return
+        if self._last_mtime is None or mtime > self._last_mtime:
+            self.reload()

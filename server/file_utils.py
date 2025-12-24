@@ -148,7 +148,7 @@ def save_knowledge_to_qdrant(qdrant_client, vector, payload):
     )
 
 
-def handle_file_upload(file_storage, tenant_id, qdrant_client, embedding_model):
+def handle_file_upload(file_storage, chat_id, qdrant_client, embedding_model):
     original_filename = file_storage.filename
     if original_filename == '':
         return {'error': 'ファイル名が空です'}, 400
@@ -180,7 +180,7 @@ def handle_file_upload(file_storage, tenant_id, qdrant_client, embedding_model):
             "title": filename,
             "source": "file_upload",
             "file_type": file_extension,
-            "tenant_id": tenant_id,
+            "chat_id": chat_id,
             "type": "knowledge",
             "timestamp": time.time(),
         }
@@ -201,7 +201,7 @@ def handle_file_upload(file_storage, tenant_id, qdrant_client, embedding_model):
             pass
 
 
-def handle_url_fetch(url, title, tenant_id, qdrant_client, embedding_model):
+def handle_url_fetch(url, title, chat_id, qdrant_client, embedding_model):
     content_data = fetch_url_content(url)
     if not content_data:
         return {'error': 'URLからコンテンツを取得できませんでした'}, 400
@@ -218,7 +218,7 @@ def handle_url_fetch(url, title, tenant_id, qdrant_client, embedding_model):
         "title": resolved_title,
         "source": "url_fetch",
         "url": url,
-        "tenant_id": tenant_id,
+        "chat_id": chat_id,
         "type": "knowledge",
         "timestamp": time.time(),
     }
@@ -232,12 +232,12 @@ def handle_url_fetch(url, title, tenant_id, qdrant_client, embedding_model):
     }, 200
 
 
-def add_manual_knowledge(content, title, tenant_id, category, tags, qdrant_client, embedding_model):
+def add_manual_knowledge(content, title, chat_id, category, tags, qdrant_client, embedding_model):
     knowledge_vector = embedding_model.encode(content).tolist()
     payload = {
         "text": content,
         "title": title,
-        "tenant_id": tenant_id,
+        "chat_id": chat_id,
         "type": "knowledge",
         "category": category,
         "tags": tags,

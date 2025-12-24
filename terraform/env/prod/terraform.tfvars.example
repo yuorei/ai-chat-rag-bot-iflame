@@ -1,0 +1,23 @@
+# GCP Project Configuration
+project_id = "your-gcp-project-id"
+region     = "asia-northeast1"
+
+# Container Image
+image_tag = "latest"
+
+# Cloud Run Resources
+cpu           = "1"
+memory        = "1Gi"
+min_instances = 0
+max_instances = 10
+
+# Gemini Configuration
+gemini_model_name = "gemini-2.0-flash-lite"
+
+# Qdrant Configuration
+qdrant_url = "https://your-qdrant-endpoint:6333"
+
+# Management API Configuration (optional)
+mgmt_api_base_url    = "https://your-management-api.example.com"
+mgmt_api_cache_ttl   = "30"
+mgmt_api_timeout_sec = "5"

@@ -1,4 +1,6 @@
 qdrant_storage
+management/db-data
+management/uploads
 .env
 .DS_Store
 __pycache__
