@@ -4,7 +4,7 @@ import time
 from flask import Flask, jsonify, g, request
 from flask_cors import CORS
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, VectorParams
+from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, PayloadSchemaType, VectorParams
 from sentence_transformers import SentenceTransformer
 
 import settings
@@ -28,6 +28,24 @@ domain_registry = DomainRegistry(
     timeout=settings.MGMT_API_TIMEOUT_SEC,
 )
 ai_agent = AIAgent()
+
+
+def _ensure_payload_indexes(client):
+    """Ensure required payload indexes exist on the collection."""
+    required_indexes = ["chat_id", "type"]
+    try:
+        info = client.get_collection(settings.QDRANT_COLLECTION_NAME)
+        existing_indexes = set(info.payload_schema.keys()) if info.payload_schema else set()
+        for field in required_indexes:
+            if field not in existing_indexes:
+                client.create_payload_index(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    field_name=field,
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                print(f"Created missing index for '{field}' field")
+    except Exception as e:
+        print(f"Warning: Failed to ensure payload indexes: {e}")
 
 
 def init_qdrant():
@@ -69,8 +87,25 @@ def init_qdrant():
                     vectors_config=VectorParams(size=384, distance=Distance.COSINE),
                 )
                 print(f"Created collection '{settings.QDRANT_COLLECTION_NAME}'")
+
+                # Create payload indexes for filtering
+                qdrant_client.create_payload_index(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    field_name="chat_id",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                print("Created index for 'chat_id' field")
+
+                qdrant_client.create_payload_index(
+                    collection_name=settings.QDRANT_COLLECTION_NAME,
+                    field_name="type",
+                    field_schema=PayloadSchemaType.KEYWORD,
+                )
+                print("Created index for 'type' field")
             else:
                 print(f"Collection '{settings.QDRANT_COLLECTION_NAME}' already exists")
+                # Ensure payload indexes exist for existing collection
+                _ensure_payload_indexes(qdrant_client)
             print("Qdrant connected successfully")
             return True
 
