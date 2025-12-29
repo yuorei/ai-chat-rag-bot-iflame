@@ -1,3 +1,4 @@
+import json
 import os
 import time
 
@@ -131,16 +132,54 @@ def chat():
     try:
         data = request.get_json() or {}
         query = data.get('message', '')
+        page_context = data.get('page_context')  # 親ページの情報
+        only_page_context = data.get('only_page_context', False)  # ページのみモード
         chat_entry = getattr(g, 'chat', {})
         chat_id = chat_entry.get('id')
         if not chat_id:
             return jsonify({'error': 'Chat configuration is invalid'}), 500
         system_prompt = chat_entry.get('system_prompt')
 
+        # === デバッグログ: クライアントからのリクエスト ===
+        request_log = {
+            "severity": "INFO",
+            "log_type": "chat_request",
+            "message": query,
+            "chat_id": chat_id,
+            "only_page_context": only_page_context,
+            "page_context": {
+                "title": page_context.get('title', '') if page_context else None,
+                "url": page_context.get('url', '') if page_context else None,
+                "description": page_context.get('description', '')[:200] if page_context and page_context.get('description') else None,
+                "bodyText_preview": page_context.get('bodyText', '')[:300] if page_context and page_context.get('bodyText') else None,
+                "bodyText_length": len(page_context.get('bodyText', '')) if page_context else 0,
+            } if page_context else None
+        }
+        print(json.dumps(request_log, ensure_ascii=False), flush=True)
+
         context = ""
         context_found = False
 
-        if qdrant_client and embedding_model:
+        # ページコンテキストがある場合、コンテキストに追加
+        page_context_text = ""
+        if page_context:
+            page_context_parts = []
+            if page_context.get('title'):
+                page_context_parts.append(f"ページタイトル: {page_context['title']}")
+            if page_context.get('url'):
+                page_context_parts.append(f"URL: {page_context['url']}")
+            if page_context.get('description'):
+                page_context_parts.append(f"ページ説明: {page_context['description']}")
+            if page_context.get('bodyText'):
+                # 本文テキストは長い場合があるので制限
+                body_text = page_context['bodyText'][:3000]
+                page_context_parts.append(f"ページ内容:\n{body_text}")
+            if page_context_parts:
+                page_context_text = "【ユーザーが現在見ているページの情報】\n" + "\n".join(page_context_parts)
+                print(f"Page context received: title='{page_context.get('title', '')}', body length={len(page_context.get('bodyText', ''))}")
+
+        # ページのみモードでない場合のみベクター検索を実行
+        if not only_page_context and qdrant_client and embedding_model:
             try:
                 query_vector = embedding_model.encode(query).tolist()
 
@@ -190,7 +229,28 @@ def chat():
             except Exception as e:
                 print(f"Vector search failed: {e}")
 
-        response = ai_agent.think_and_respond(query, context, system_prompt=system_prompt)
+        # ページコンテキストをRAG検索結果と統合
+        if page_context_text:
+            if context:
+                context = context + "\n\n" + page_context_text
+            else:
+                context = page_context_text
+                context_found = True  # ページコンテキストもコンテキストとして扱う
+
+        # === デバッグログ: LLMに渡す値 ===
+        llm_input_log = {
+            "severity": "INFO",
+            "log_type": "llm_input",
+            "query": query,
+            "system_prompt_preview": system_prompt[:300] if system_prompt else None,
+            "system_prompt_length": len(system_prompt) if system_prompt else 0,
+            "context_found": context_found,
+            "context_length": len(context),
+            "context_preview": context[:500] if context else None
+        }
+        print(json.dumps(llm_input_log, ensure_ascii=False), flush=True)
+
+        response = ai_agent.think_and_respond(query, context, system_prompt=system_prompt, only_page_context=only_page_context)
 
         response_data = {
             'response': response,
