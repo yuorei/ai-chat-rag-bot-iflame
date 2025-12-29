@@ -29,4 +29,4 @@ mgmt_admin_api_key = "your-management-admin-api-key"
 
 # GitHub Actions Workload Identity Federation
 github_repository    = "yuorei/ai-chat-iflame"
-allowed_repositories = ["yuorei/ai-chat-iflame", "yuorei/blog-support"]
+allowed_repositories = ["yuorei/ai-chat-iflame", ""]
