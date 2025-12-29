@@ -79,3 +79,20 @@ variable "qdrant_api_key" {
   type        = string
   sensitive   = true
 }
+
+variable "mgmt_admin_api_key" {
+  description = "Management Admin API Key"
+  type        = string
+  sensitive   = true
+}
+
+variable "github_repository" {
+  description = "GitHub repository in format owner/repo"
+  type        = string
+}
+
+variable "allowed_repositories" {
+  description = "List of GitHub repositories allowed to use WIF"
+  type        = list(string)
+  default     = []
+}

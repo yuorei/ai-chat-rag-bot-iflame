@@ -67,6 +67,7 @@ module "server" {
     MGMT_API_BASE_URL    = var.mgmt_api_base_url
     MGMT_API_CACHE_TTL   = var.mgmt_api_cache_ttl
     MGMT_API_TIMEOUT_SEC = var.mgmt_api_timeout_sec
+    MGMT_ADMIN_API_KEY   = var.mgmt_admin_api_key
     GEMINI_API_KEY       = var.gemini_api_key
     QDRANT_API_KEY       = var.qdrant_api_key
   }
@@ -77,4 +78,13 @@ module "server" {
     google_project_service.run,
     google_artifact_registry_repository.server
   ]
+}
+
+# GitHub Actions Workload Identity Federation
+module "github_actions_wif" {
+  source = "../../modules/github_actions_wif"
+
+  project_id           = var.project_id
+  github_repository    = var.github_repository
+  allowed_repositories = var.allowed_repositories
 }
