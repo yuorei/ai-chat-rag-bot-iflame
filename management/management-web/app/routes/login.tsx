@@ -40,7 +40,9 @@ export default function Login() {
     if (isSignInWithEmailLink(auth, window.location.href)) {
       const storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
       if (!storedEmail) {
-        setError("メールを送信したブラウザでリンクを開いてください");
+        setError(
+          "メールを送信したのと同じブラウザでこのリンクを開いてください。別のブラウザからアクセスしている場合は、この画面でメールアドレスを入力して再度ログイン用メールを送信してください。"
+        );
         return;
       }
       setVerifying(true);
