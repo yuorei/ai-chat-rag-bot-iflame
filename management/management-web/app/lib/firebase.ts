@@ -5,6 +5,11 @@ function getMetaContent(name: string): string {
   if (typeof document === 'undefined') {
     return ''
   }
+  // Whitelist of allowed meta tag names for security
+  const allowedNames = ['firebase-api-key', 'firebase-auth-domain', 'firebase-project-id', 'app-url']
+  if (!allowedNames.includes(name)) {
+    return ''
+  }
   const meta = document.querySelector(`meta[name="${name}"]`)
   return meta?.getAttribute('content') || ''
 }
