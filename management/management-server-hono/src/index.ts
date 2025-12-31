@@ -571,6 +571,9 @@ async function ensureAdminOrUser(c: any): Promise<{ isApiKey: boolean } | Respon
   if (!user) {
     return jsonError(c, 401, 'login required')
   }
+  if (!user.email_verified) {
+    return jsonError(c, 403, 'email verification required')
+  }
   c.set('user', user)
   return { isApiKey: false }
 }
@@ -580,6 +583,9 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
   const user = await authenticate(c)
   if (!user) {
     return jsonError(c, 401, 'login required')
+  }
+  if (!user.email_verified) {
+    return jsonError(c, 403, 'email verification required')
   }
   c.set('user', user)
   return null
