@@ -560,6 +560,13 @@ function serverError(c: any) {
   return jsonError(c, 500, 'internal server error')
 }
 
+function validateEmailVerified(user: FirebaseUser, c: any): Response | null {
+  if (!user.email_verified) {
+    return jsonError(c, 403, 'email verification required')
+  }
+  return null
+}
+
 // API Key または Firebase 認証を許可（GET用 - server-to-server通信対応）
 async function ensureAdminOrUser(c: any): Promise<{ isApiKey: boolean } | Response> {
   const cfg = getConfig(c)
@@ -571,6 +578,8 @@ async function ensureAdminOrUser(c: any): Promise<{ isApiKey: boolean } | Respon
   if (!user) {
     return jsonError(c, 401, 'login required')
   }
+  const verificationError = validateEmailVerified(user, c)
+  if (verificationError) return verificationError
   c.set('user', user)
   return { isApiKey: false }
 }
@@ -581,6 +590,8 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
   if (!user) {
     return jsonError(c, 401, 'login required')
   }
+  const verificationError = validateEmailVerified(user, c)
+  if (verificationError) return verificationError
   c.set('user', user)
   return null
 }
