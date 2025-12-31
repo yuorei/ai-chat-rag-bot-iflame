@@ -15,7 +15,7 @@ function getFirebaseConfig() {
     const authDomain = getMetaContent('firebase-auth-domain')
     const projectId = getMetaContent('firebase-project-id')
     
-    if (apiKey || authDomain || projectId) {
+    if (apiKey && authDomain && projectId) {
       return { apiKey, authDomain, projectId }
     }
   }
