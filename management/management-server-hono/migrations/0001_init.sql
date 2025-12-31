@@ -5,9 +5,8 @@ CREATE TABLE IF NOT EXISTS schema_migrations (
 );
 
 CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY,              -- Firebase UID
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
     is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))

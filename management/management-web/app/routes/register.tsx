@@ -1,41 +1,152 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router";
-import { apiFetch } from "../lib/api";
-import type { User } from "../lib/types";
+import {
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  fetchSignInMethodsForEmail,
+} from "firebase/auth";
+import { getFirebaseAuth, getAppUrl } from "../lib/firebase";
 
 export function meta() {
   return [
     { title: "新規登録 | Management" },
-    { name: "description", content: "管理コンソールの新規登録" },
+    { name: "description", content: "管理コンソールに新規登録" },
   ];
+}
+
+const EMAIL_STORAGE_KEY = "emailForSignIn";
+
+function getActionCodeSettings() {
+  const appUrl = getAppUrl();
+  return {
+    url: `${appUrl}/register`,
+    handleCodeInApp: true,
+  };
 }
 
 export default function Register() {
   const nav = useNavigate();
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const auth = getFirebaseAuth();
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      setVerifying(true);
+      let storedEmail = window.localStorage.getItem(EMAIL_STORAGE_KEY);
+      if (!storedEmail) {
+        storedEmail = window.prompt("確認のためメールアドレスを入力してください");
+      }
+      if (storedEmail) {
+        signInWithEmailLink(auth, storedEmail, window.location.href)
+          .then(() => {
+            window.localStorage.removeItem(EMAIL_STORAGE_KEY);
+            nav("/dashboard");
+          })
+          .catch((err) => {
+            setError(err.message);
+            setVerifying(false);
+          });
+      } else {
+        setError("メールアドレスが必要です");
+        setVerifying(false);
+      }
+    }
+  }, [nav]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const auth = getFirebaseAuth();
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      if (user && !isSignInWithEmailLink(auth, window.location.href)) {
+        nav("/dashboard");
+      }
+    });
+    return () => unsubscribe();
+  }, [nav]);
+
+  const sendLink = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
-      const res = await apiFetch<{ user: User }>("/api/auth/register", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-        skipAuthError: true,
-      });
-      if (res?.user) {
-        nav("/dashboard");
+      const auth = getFirebaseAuth();
+      // 既存ユーザーかどうかを確認
+      const signInMethods = await fetchSignInMethodsForEmail(auth, email);
+      if (signInMethods.length > 0) {
+        setError("このメールアドレスは既に登録されています。ログインしてください。");
+        setLoading(false);
+        return;
       }
+      await sendSignInLinkToEmail(auth, email, getActionCodeSettings());
+      window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
+      setEmailSent(true);
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setLoading(false);
     }
   };
+
+  if (verifying) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">認証中...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (emailSent) {
+    return (
+      <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg border border-slate-200 space-y-6">
+          <div className="space-y-2 text-center">
+            <div className="mx-auto w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4">
+              <svg
+                className="w-6 h-6 text-green-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">
+              メールを確認してください
+            </h1>
+            <p className="text-sm text-slate-600">
+              <strong className="text-slate-900">{email}</strong>{" "}
+              に登録リンクを送信しました。
+            </p>
+            <p className="text-sm text-slate-500">
+              メール内のリンクをクリックして登録を完了してください。
+            </p>
+          </div>
+          <button
+            onClick={() => setEmailSent(false)}
+            className="w-full text-sm text-sky-700 hover:underline"
+          >
+            別のメールアドレスで試す
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
@@ -44,13 +155,17 @@ export default function Register() {
           <p className="text-sm font-medium text-slate-500">AIチャット管理</p>
           <h1 className="text-2xl font-bold text-slate-900">新規登録</h1>
           <p className="text-sm text-slate-600">
-            初回ユーザーは自動的に管理者として登録されます。
+            メールアドレスに登録リンクを送信します。
+            <br />
+            パスワードは必要ありません。
           </p>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={sendLink} className="space-y-4">
           <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">メールアドレス</label>
+            <label className="text-sm font-medium text-slate-700">
+              メールアドレス
+            </label>
             <input
               type="email"
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
@@ -58,18 +173,7 @@ export default function Register() {
               onChange={(e) => setEmail(e.target.value)}
               required
               autoComplete="email"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-slate-700">パスワード</label>
-            <input
-              type="password"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-sky-500 focus:outline-none"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              autoComplete="new-password"
+              placeholder="your@email.com"
             />
           </div>
           <button
@@ -77,7 +181,7 @@ export default function Register() {
             disabled={loading}
             className="w-full rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-60"
           >
-            {loading ? "登録中..." : "登録してログイン"}
+            {loading ? "送信中..." : "登録リンクを送信"}
           </button>
         </form>
 
@@ -87,12 +191,12 @@ export default function Register() {
           </p>
         )}
 
-        <p className="text-sm text-slate-600 text-center">
-          既にアカウントをお持ちですか？{" "}
-          <Link to="/login" className="text-sky-700 font-semibold hover:underline">
-            ログインする
+        <div className="text-center text-sm text-slate-600">
+          既にアカウントをお持ちの方は{" "}
+          <Link to="/login" className="text-sky-600 hover:underline font-medium">
+            ログイン
           </Link>
-        </p>
+        </div>
       </div>
     </main>
   );

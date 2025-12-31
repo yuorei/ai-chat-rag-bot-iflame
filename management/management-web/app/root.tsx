@@ -5,6 +5,7 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "react-router";
 
 import type { Route } from "./+types/root";
@@ -23,7 +24,21 @@ export const links: Route.LinksFunction = () => [
   },
 ];
 
+export async function loader({ context }: Route.LoaderArgs) {
+  const env = context.cloudflare.env;
+  return {
+    firebaseConfig: {
+      apiKey: env.FIREBASE_API_KEY || "",
+      authDomain: env.FIREBASE_AUTH_DOMAIN || "",
+      projectId: env.FIREBASE_PROJECT_ID || "",
+    },
+    appUrl: env.APP_URL || "",
+  };
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
+  const data = useLoaderData<typeof loader>();
+
   return (
     <html lang="ja">
       <head>
@@ -33,6 +48,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.__FIREBASE_CONFIG__=${JSON.stringify(data?.firebaseConfig || {})};window.__APP_URL__=${JSON.stringify(data?.appUrl || "")};`,
+          }}
+        />
         {children}
         <ScrollRestoration />
         <Scripts />

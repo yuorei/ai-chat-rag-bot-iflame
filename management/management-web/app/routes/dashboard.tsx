@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { useNavigate, Link } from "react-router";
+import { useNavigate } from "react-router";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { getFirebaseAuth } from "../lib/firebase";
 import { apiBase, apiFetch, AuthError } from "../lib/api";
 import type { ChatProfile, KnowledgeAsset, User } from "../lib/types";
 
@@ -32,24 +34,30 @@ export default function Dashboard() {
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
   useEffect(() => {
-    loadSession();
+    if (typeof window === "undefined") return;
+
+    const auth = getFirebaseAuth();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        nav("/login");
+        return;
+      }
+      try {
+        const me = await apiFetch<{ user: User }>("/api/auth/me");
+        setUser(me.user);
+        loadChats();
+        loadKnowledge();
+      } catch (err) {
+        if (err instanceof AuthError) {
+          nav("/login");
+        } else {
+          setError((err as Error).message);
+        }
+      }
+    });
+    return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const loadSession = async () => {
-    try {
-      const me = await apiFetch<{ user: User }>("/api/auth/me");
-      setUser(me.user);
-      loadChats();
-      loadKnowledge();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        nav("/login");
-      } else {
-        setError((err as Error).message);
-      }
-    }
-  };
 
   const loadChats = async () => {
     setLoadingChats(true);
@@ -155,10 +163,13 @@ export default function Dashboard() {
     formData.append("title", fileForm.title);
     formData.append("file", fileForm.file);
     try {
+      const currentUser = getFirebaseAuth().currentUser;
+      const idToken = currentUser ? await currentUser.getIdToken() : "";
       const res = await fetch(`${apiBase}/api/knowledge/files`, {
         method: "POST",
         body: formData,
         credentials: "include",
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
       });
       const data = await res.json();
       if (res.status === 401) {
@@ -232,6 +243,7 @@ export default function Dashboard() {
 
   const logout = async () => {
     try {
+      await signOut(getFirebaseAuth());
       await apiFetch("/api/auth/logout", { method: "POST", skipAuthError: true });
     } catch {
       // ignore
@@ -293,9 +305,6 @@ export default function Dashboard() {
             {user && (
               <div className="text-sm text-right">
                 <p className="font-semibold text-slate-800">{user.email}</p>
-                <p className="text-slate-500">
-                  {user.is_admin ? "管理者" : "ユーザー"}
-                </p>
               </div>
             )}
             <button
@@ -697,17 +706,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!user?.is_admin && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            権限: 一般ユーザーです。管理者が必要な操作は制限されます。
-          </div>
-        )}
-
         <footer className="text-xs text-slate-500">
-          API: <code className="font-mono">{apiBase}</code>{" "}
-          <Link to="/register" className="text-sky-700 hover:underline">
-            新規登録
-          </Link>
+          API: <code className="font-mono">{apiBase}</code>
         </footer>
       </div>
     </main>

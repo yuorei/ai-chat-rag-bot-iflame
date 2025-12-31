@@ -1,3 +1,5 @@
+import { getFirebaseAuth } from './firebase'
+
 const fallbackBase =
   import.meta.env.VITE_MANAGEMENT_API_BASE_URL ?? "http://localhost:8100";
 
@@ -12,11 +14,25 @@ export async function apiFetch<T = any>(
   path: string,
   init: Options = {},
 ): Promise<T> {
+  let idToken = ''
+  // クライアントサイドのみで認証トークンを取得
+  if (typeof window !== 'undefined') {
+    try {
+      const currentUser = getFirebaseAuth().currentUser
+      if (currentUser) {
+        idToken = await currentUser.getIdToken()
+      }
+    } catch {
+      // Firebase 初期化エラーは無視してリクエストを続行
+    }
+  }
+
   const res = await fetch(`${apiBase}${path}`, {
     credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(idToken ? { "Authorization": `Bearer ${idToken}` } : {}),
       ...(init.headers || {}),
     },
   });

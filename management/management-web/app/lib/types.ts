@@ -24,5 +24,4 @@ export type KnowledgeAsset = {
 export type User = {
   id: string;
   email: string;
-  is_admin: boolean;
 };
