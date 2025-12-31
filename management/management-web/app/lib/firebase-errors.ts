@@ -60,8 +60,10 @@ export function getFirebaseErrorMessage(error: unknown): string {
 
   // エラーコードが未定義の場合は、エラーメッセージをそのまま返す
   // ただし、Firebase エラーの場合はもう少しユーザーフレンドリーなメッセージにする
-  if (err.code && err.code.startsWith('auth/')) {
-    return `認証エラーが発生しました (${err.code})`
+  if (err.code && typeof err.code === 'string' && err.code.startsWith('auth/')) {
+    // エラーコードが auth/ で始まることを確認してからメッセージに含める
+    const sanitizedCode = err.code.replace(/[^a-z0-9\-\/]/gi, '')
+    return `認証エラーが発生しました (${sanitizedCode})`
   }
 
   // その他のエラー
