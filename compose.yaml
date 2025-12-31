@@ -23,7 +23,7 @@ services:
     ports:
       - "3000:80"
     volumes:
-      - ./front:/usr/share/nginx/html
+      - ./front/public:/usr/share/nginx/html
 
   vectordb:
     image: qdrant/qdrant:latest
