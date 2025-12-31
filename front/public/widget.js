@@ -10,6 +10,10 @@
     widgetBaseUrl: 'https://ai-chat.example.com'
   };
   const dataset = scriptEl ? scriptEl.dataset : {};
+  
+  // iframeのコンテンツウィンドウが準備完了するまでの待機時間（ミリ秒）
+  // iframe.focus()直後にpostMessageを送ると、iframeのコンテンツが完全に初期化される前にメッセージが失われる可能性があるため、短い遅延を設ける
+  const IFRAME_READY_DELAY = 100;
 
   function normalizeBase(url) {
     if (!url) {
@@ -280,7 +284,7 @@
         messageBanner.style.display = 'none'; // チャットを開いたらバナーを非表示（永久に）
         iframe.focus();
         // チャットを開いた時にページコンテキストを再送信
-        setTimeout(() => sendPageContextNow(iframe), 100);
+        setTimeout(() => sendPageContextNow(iframe), IFRAME_READY_DELAY);
       }
     });
 
