@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feature/page-read
     paths:
       - "server/**"
       - ".github/workflows/cloudrun-deploy.yaml"

@@ -10,6 +10,10 @@
     widgetBaseUrl: 'https://ai-chat.example.com'
   };
   const dataset = scriptEl ? scriptEl.dataset : {};
+  
+  // iframeのコンテンツウィンドウが準備完了するまでの待機時間（ミリ秒）
+  // iframe.focus()直後にpostMessageを送ると、iframeのコンテンツが完全に初期化される前にメッセージが失われる可能性があるため、短い遅延を設ける
+  const IFRAME_READY_DELAY = 100;
 
   function normalizeBase(url) {
     if (!url) {
@@ -47,6 +51,89 @@
       callback();
     } else {
       document.addEventListener('DOMContentLoaded', callback);
+    }
+  }
+
+  // 親ページの情報を収集する関数
+  function collectPageContext() {
+    const context = {
+      title: document.title || '',
+      url: window.location.href,
+      pathname: window.location.pathname,
+      // メタ情報
+      description: '',
+      keywords: '',
+      // 本文テキスト（最大5000文字）
+      bodyText: ''
+    };
+
+    // meta description
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      context.description = metaDesc.getAttribute('content') || '';
+    }
+
+    // meta keywords
+    const metaKeywords = document.querySelector('meta[name="keywords"]');
+    if (metaKeywords) {
+      context.keywords = metaKeywords.getAttribute('content') || '';
+    }
+
+    // Open Graph情報
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogTitle) {
+      context.ogTitle = ogTitle.getAttribute('content') || '';
+    }
+    if (ogDesc) {
+      context.ogDescription = ogDesc.getAttribute('content') || '';
+    }
+
+    // 本文テキストを収集（script, style, iframeは除外）
+    try {
+      const bodyClone = document.body.cloneNode(true);
+      // 不要な要素を削除
+      const removeSelectors = ['script', 'style', 'iframe', 'noscript', '#iframe-widget-frame', '#iframe-widget-toggle', '#iframe-widget-banner'];
+      removeSelectors.forEach(selector => {
+        bodyClone.querySelectorAll(selector).forEach(el => el.remove());
+      });
+      // テキストを抽出して整形
+      let text = bodyClone.textContent || bodyClone.innerText || '';
+      // 連続する空白・改行を整理
+      text = text.replace(/\s+/g, ' ').trim();
+      // 最大5000文字に制限
+      context.bodyText = text.substring(0, 5000);
+    } catch (e) {
+      console.warn('[iframe-widget] Failed to collect body text', e);
+    }
+
+    return context;
+  }
+
+  // iframeにページコンテキストを送信する関数
+  function sendPageContextToIframe(iframe) {
+    const context = collectPageContext();
+    // iframeがロードされたら送信
+    iframe.addEventListener('load', function() {
+      iframe.contentWindow.postMessage({
+        type: 'pageContext',
+        context: context
+      }, '*');
+      console.log('[iframe-widget] Sent page context on load:', context.title);
+    });
+  }
+
+  // 現在のページコンテキストを即座に送信する関数
+  function sendPageContextNow(iframe) {
+    try {
+      const context = collectPageContext();
+      iframe.contentWindow.postMessage({
+        type: 'pageContext',
+        context: context
+      }, '*');
+      console.log('[iframe-widget] Sent page context now:', context.title);
+    } catch (e) {
+      console.warn('[iframe-widget] Failed to send page context:', e);
     }
   }
 
@@ -191,18 +278,23 @@
       toggleButton.textContent = isHidden
         ? (dataset.closeLabel || '✕')
         : (dataset.buttonLabel || '💬');
-      
+
       if (isHidden) {
         // チャットを開く
         messageBanner.style.display = 'none'; // チャットを開いたらバナーを非表示（永久に）
         iframe.focus();
+        // チャットを開いた時にページコンテキストを再送信
+        setTimeout(() => sendPageContextNow(iframe), IFRAME_READY_DELAY);
       }
     });
 
     iframe.style.display = 'none';
     // 初期状態: バナーは表示、チャットは非表示
     messageBanner.style.display = 'flex';
-    
+
+    // iframeにページコンテキストを送信
+    sendPageContextToIframe(iframe);
+
     document.body.appendChild(iframe);
     document.body.appendChild(toggleButton);
     document.body.appendChild(messageBanner);
