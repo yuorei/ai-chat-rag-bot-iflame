@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import { sign, verify } from 'hono/jwt'
+import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
 
 type D1Result<T = unknown> = {
   results?: T[]
@@ -27,10 +27,10 @@ type D1Database = {
 
 type Bindings = {
   DB: D1Database
+  FIREBASE_AUTH_CACHE: KVNamespace
+  FIREBASE_PROJECT_ID: string
   MGMT_ADMIN_API_KEY?: string
   MGMT_FLASK_BASE_URL?: string
-  MGMT_AUTH_SECRET?: string
-  MGMT_ALLOW_OPEN_SIGNUP?: string
   MGMT_ALLOWED_ORIGINS?: string
   MGMT_COOKIE_SECURE?: string
   MGMT_MAX_UPLOAD_MB?: string
@@ -38,7 +38,7 @@ type Bindings = {
 }
 
 type Variables = {
-  user?: User
+  user?: FirebaseUser
   config?: Config
 }
 
@@ -47,18 +47,14 @@ type Config = {
   flaskBaseURL: string
   maxUploadBytes: number
   requestTimeoutSec: number
-  authSecret: string
-  allowOpenSignup: boolean
   allowedOrigins: string[]
   cookieSecure: boolean
 }
 
-type User = {
-  id: string
+type FirebaseUser = {
+  uid: string
   email: string
-  is_admin: boolean
-  created_at: string
-  updated_at: string
+  email_verified: boolean
 }
 
 type ChatProfile = {
@@ -87,9 +83,6 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
-const sessionTTLSeconds = 14 * 24 * 60 * 60
-const encoder = new TextEncoder()
-
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 app.use('*', async (c, next) => {
@@ -111,93 +104,17 @@ app.use('*', async (c, next) => {
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
 
-app.post('/api/auth/register', async (c) => {
-  const cfg = getConfig(c)
-  const body = await readJson<{ email: string; password: string }>(c)
-  if (!body) {
-    return jsonError(c, 400, 'invalid json')
-  }
-
-  const email = (body.email || '').trim().toLowerCase()
-  const password = body.password || ''
-  if (!email || !email.includes('@')) {
-    return jsonError(c, 400, 'メールアドレスが不正です')
-  }
-  if (password.length < 8) {
-    return jsonError(c, 400, 'パスワードは8文字以上にしてください')
-  }
-
-  try {
-    const userCount = await countUsers(c)
-    if (userCount > 0 && !cfg.allowOpenSignup) {
-      const authUser = await authenticate(c)
-      if (!authUser || !authUser.is_admin) {
-        return jsonError(c, 403, 'サインアップは管理者のみ許可されています')
-      }
-    }
-
-    const passwordHash = await hashPassword(password)
-    const id = crypto.randomUUID()
-    const isAdmin = userCount === 0
-    await c.env.DB.prepare(
-      `INSERT INTO users (id, email, password_hash, is_admin, created_at, updated_at)
-       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
-    )
-      .bind(id, email, passwordHash, isAdmin ? 1 : 0)
-      .run()
-
-    const user = await fetchUserById(c, id)
-    if (!user) {
-      throw new Error('failed to load user after insert')
-    }
-    const token = await issueToken(user, cfg)
-    setSessionCookie(c, token, cfg)
-    return c.json({ user }, 201)
-  } catch (err) {
-    if (isUniqueConstraintError(err)) {
-      return jsonError(c, 409, '既に登録されています')
-    }
-    console.error(err)
-    return serverError(c)
-  }
-})
-
-app.post('/api/auth/login', async (c) => {
-  const cfg = getConfig(c)
-  const body = await readJson<{ email: string; password: string }>(c)
-  if (!body) {
-    return jsonError(c, 400, 'invalid json')
-  }
-  const email = (body.email || '').trim().toLowerCase()
-  const password = body.password || ''
-  if (!email || !password) {
-    return jsonError(c, 400, 'メールアドレスとパスワードを入力してください')
-  }
-
-  try {
-    const found = await fetchUserWithPasswordByEmail(c, email)
-    if (!found) {
-      return jsonError(c, 401, 'メールアドレスまたはパスワードが違います')
-    }
-    const verified = await verifyPassword(found.passwordHash, password)
-    if (!verified) {
-      return jsonError(c, 401, 'メールアドレスまたはパスワードが違います')
-    }
-    const token = await issueToken(found.user, cfg)
-    setSessionCookie(c, token, cfg)
-    return c.json({ user: found.user })
-  } catch (err) {
-    console.error(err)
-    return serverError(c)
-  }
-})
-
 app.get('/api/auth/me', async (c) => {
   const user = await authenticate(c)
   if (!user) {
     return jsonError(c, 401, 'unauthorized')
   }
-  return c.json({ user })
+  return c.json({
+    user: {
+      id: user.uid,
+      email: user.email
+    }
+  })
 })
 
 app.post('/api/auth/logout', (c) => {
@@ -206,11 +123,13 @@ app.post('/api/auth/logout', (c) => {
 })
 
 app.get('/api/chats', async (c) => {
-  const guard = await ensureAdmin(c)
-  if (guard) return guard
+  const authResult = await ensureAdminOrUser(c)
+  if (authResult instanceof Response) return authResult
 
   try {
-    const chats = await fetchChats(c)
+    // API Key: 全件取得（server-to-server用）、Firebase認証: 自分のデータのみ
+    const userId = authResult.isApiKey ? null : (c.get('user') as FirebaseUser).uid
+    const chats = await fetchChats(c, userId)
     return c.json({ chats })
   } catch (err) {
     console.error(err)
@@ -219,9 +138,9 @@ app.get('/api/chats', async (c) => {
 })
 
 app.post('/api/chats', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
-  const user = c.get('user') as User | undefined
+  const user = c.get('user') as FirebaseUser
 
   const payload = await readJson<{
     id: string
@@ -246,7 +165,7 @@ app.post('/api/chats', async (c) => {
   }
   const displayName = (payload.display_name || '').trim() || id
   const systemPrompt = payload.system_prompt || ''
-  const ownerUserId = user?.id || null
+  const ownerUserId = user.uid
 
   try {
     const statements = [
@@ -274,11 +193,12 @@ app.post('/api/chats', async (c) => {
 })
 
 app.get('/api/chats/:id', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
   const id = sanitizeAlias(c.req.param('id'))
   try {
-    const chat = await fetchChat(c, id)
+    const chat = await fetchChatIfOwned(c, id, user.uid)
     if (!chat) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -290,8 +210,9 @@ app.get('/api/chats/:id', async (c) => {
 })
 
 app.put('/api/chats/:id', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
   const id = sanitizeAlias(c.req.param('id'))
   const payload = await readJson<{
     target?: string
@@ -305,7 +226,8 @@ app.put('/api/chats/:id', async (c) => {
   }
 
   try {
-    const current = await fetchChat(c, id)
+    // 所有者チェック
+    const current = await fetchChatIfOwned(c, id, user.uid)
     if (!current) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -349,8 +271,9 @@ app.put('/api/chats/:id', async (c) => {
       return c.json({ updated: false })
     }
     sets.push("updated_at = datetime('now')")
-    const sql = `UPDATE chat_profiles SET ${sets.join(', ')} WHERE id = ?`
-    params.push(id)
+    // 所有者チェック付きで更新
+    const sql = `UPDATE chat_profiles SET ${sets.join(', ')} WHERE id = ? AND owner_user_id = ?`
+    params.push(id, user.uid)
 
     const res = await c.env.DB.prepare(sql).bind(...params).run()
     if (res.meta?.changes === 0) {
@@ -361,7 +284,7 @@ app.put('/api/chats/:id', async (c) => {
       await replaceTargets(c, id, newTargets)
     }
 
-    const chat = await fetchChat(c, id)
+    const chat = await fetchChatIfOwned(c, id, user.uid)
     return c.json(chat)
   } catch (err) {
     if (isUniqueConstraintError(err)) {
@@ -373,12 +296,14 @@ app.put('/api/chats/:id', async (c) => {
 })
 
 app.delete('/api/chats/:id', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
   const id = sanitizeAlias(c.req.param('id'))
 
   try {
-    const res = await c.env.DB.prepare('DELETE FROM chat_profiles WHERE id = ?').bind(id).run()
+    // 所有者チェック付きで削除
+    const res = await c.env.DB.prepare('DELETE FROM chat_profiles WHERE id = ? AND owner_user_id = ?').bind(id, user.uid).run()
     if (!res.meta || res.meta.changes === 0) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -390,12 +315,13 @@ app.delete('/api/chats/:id', async (c) => {
 })
 
 app.get('/api/knowledge', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
   const chatId = (c.req.query('chat_id') || '').trim()
 
   try {
-    const items = await listKnowledge(c, chatId)
+    const items = await listKnowledge(c, chatId, user.uid)
     return c.json({ items })
   } catch (err) {
     console.error(err)
@@ -404,8 +330,9 @@ app.get('/api/knowledge', async (c) => {
 })
 
 app.post('/api/knowledge/files', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
   const cfg = getConfig(c)
 
   try {
@@ -420,7 +347,8 @@ app.post('/api/knowledge/files', async (c) => {
     if (!chatKey || typeof chatKey !== 'string') {
       return jsonError(c, 400, 'chat_id or target is required')
     }
-    const chat = await resolveChat(c, chatKey)
+    // 所有者チェック
+    const chat = await resolveChatIfOwned(c, chatKey, user.uid)
     if (!chat) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -460,8 +388,9 @@ app.post('/api/knowledge/files', async (c) => {
 })
 
 app.post('/api/knowledge/urls', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
 
   const payload = await readJson<{
     chat_id?: string
@@ -478,7 +407,8 @@ app.post('/api/knowledge/urls', async (c) => {
   }
 
   try {
-    const chat = await resolveChat(c, key)
+    // 所有者チェック
+    const chat = await resolveChatIfOwned(c, key, user.uid)
     if (!chat) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -511,8 +441,9 @@ app.post('/api/knowledge/urls', async (c) => {
 })
 
 app.post('/api/knowledge/texts', async (c) => {
-  const guard = await ensureAdmin(c)
+  const guard = await ensureAuthenticatedUser(c)
   if (guard) return guard
+  const user = c.get('user') as FirebaseUser
 
   const payload = await readJson<{
     chat_id?: string
@@ -531,7 +462,8 @@ app.post('/api/knowledge/texts', async (c) => {
   }
 
   try {
-    const chat = await resolveChat(c, key)
+    // 所有者チェック
+    const chat = await resolveChatIfOwned(c, key, user.uid)
     if (!chat) {
       return jsonError(c, 404, 'chat not found')
     }
@@ -606,8 +538,6 @@ function loadConfig(env: Bindings): Config {
     flaskBaseURL: get('MGMT_FLASK_BASE_URL', 'http://localhost:8000').replace(/\/+$/, ''),
     maxUploadBytes: maxUploadMB * 1024 * 1024,
     requestTimeoutSec: getInt('MGMT_HTTP_TIMEOUT_SEC', 120),
-    authSecret: get('MGMT_AUTH_SECRET', 'dev-secret-change-me'),
-    allowOpenSignup: getBool('MGMT_ALLOW_OPEN_SIGNUP', true),
     allowedOrigins: parseOrigins(get('MGMT_ALLOWED_ORIGINS', 'http://localhost:5173')),
     cookieSecure: getBool('MGMT_COOKIE_SECURE', false)
   }
@@ -630,175 +560,97 @@ function serverError(c: any) {
   return jsonError(c, 500, 'internal server error')
 }
 
-async function ensureAdmin(c: any) {
+function validateEmailVerified(user: FirebaseUser, c: any): Response | null {
+  if (!user.email_verified) {
+    return jsonError(c, 403, 'email verification required')
+  }
+  return null
+}
+
+// API Key または Firebase 認証を許可（GET用 - server-to-server通信対応）
+async function ensureAdminOrUser(c: any): Promise<{ isApiKey: boolean } | Response> {
   const cfg = getConfig(c)
   const provided = c.req.header('X-Admin-API-Key') || c.req.query('admin_api_key') || ''
   if (cfg.adminAPIKey && provided === cfg.adminAPIKey) {
-    return null
+    return { isApiKey: true }
   }
   const user = await authenticate(c)
   if (!user) {
     return jsonError(c, 401, 'login required')
   }
-  if (!user.is_admin) {
-    return jsonError(c, 403, 'admin only')
+  const verificationError = validateEmailVerified(user, c)
+  if (verificationError) return verificationError
+  c.set('user', user)
+  return { isApiKey: false }
+}
+
+// Firebase 認証のみ必須（変更操作用）
+async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
+  const user = await authenticate(c)
+  if (!user) {
+    return jsonError(c, 401, 'login required')
   }
+  const verificationError = validateEmailVerified(user, c)
+  if (verificationError) return verificationError
   c.set('user', user)
   return null
 }
 
-async function authenticate(c: any): Promise<User | null> {
-  const cfg = getConfig(c)
-  const cookieToken = getCookie(c, 'mgmt_session') || ''
+function getFirebaseAuth(env: Bindings): Auth {
+  const keyStore = WorkersKVStoreSingle.getOrInitialize('firebase_public_keys', env.FIREBASE_AUTH_CACHE)
+  return Auth.getOrInitialize(env.FIREBASE_PROJECT_ID, keyStore)
+}
+
+async function authenticate(c: any): Promise<FirebaseUser | null> {
   const authHeader = c.req.header('Authorization') || ''
-  let token = cookieToken
-  if (!token && authHeader.toLowerCase().startsWith('bearer ')) {
-    token = authHeader.slice(7).trim()
+  if (!authHeader.toLowerCase().startsWith('bearer ')) {
+    return null
   }
-  if (!token) {
+  const idToken = authHeader.slice(7).trim()
+  if (!idToken) {
     return null
   }
 
   try {
-    const payload = (await verify(token, cfg.authSecret)) as any
-    const sub = typeof payload.sub === 'string' ? payload.sub : ''
-    if (!sub) return null
-    const user = await fetchUserById(c, sub)
-    return user
+    const auth = getFirebaseAuth(c.env)
+    const decodedToken = await auth.verifyIdToken(idToken)
+    return {
+      uid: decodedToken.uid,
+      email: decodedToken.email || '',
+      email_verified: decodedToken.email_verified || false
+    }
   } catch (err) {
-    console.error('failed to verify token', err)
+    console.error('Firebase token verification failed:', err)
     return null
   }
-}
-
-async function issueToken(user: User, cfg: Config) {
-  const now = Math.floor(Date.now() / 1000)
-  return sign(
-    { sub: user.id, email: user.email, is_admin: user.is_admin, iat: now, exp: now + sessionTTLSeconds },
-    cfg.authSecret
-  )
-}
-
-function setSessionCookie(c: any, token: string, cfg: Config) {
-  setCookie(c, 'mgmt_session', token, {
-    path: '/',
-    httpOnly: true,
-    maxAge: sessionTTLSeconds,
-    secure: cfg.cookieSecure,
-    sameSite: cfg.cookieSecure ? 'None' : 'Lax'
-  })
 }
 
 function clearSessionCookie(c: any) {
   deleteCookie(c, 'mgmt_session', { path: '/' })
 }
 
-async function countUsers(c: any): Promise<number> {
-  const row = await c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>()
-  return row?.count ?? 0
-}
-
-async function fetchUserById(c: any, id: string): Promise<User | null> {
-  const row = await c.env.DB.prepare(
-    'SELECT id, email, is_admin, created_at, updated_at FROM users WHERE id = ?'
-  )
-    .bind(id)
-    .first<any>()
-  if (!row) return null
-  return mapUserRow(row)
-}
-
-async function fetchUserWithPasswordByEmail(
-  c: any,
-  email: string
-): Promise<{ user: User; passwordHash: string } | null> {
-  const row = await c.env.DB.prepare(
-    'SELECT id, email, password_hash, is_admin, created_at, updated_at FROM users WHERE email = ?'
-  )
-    .bind(email)
-    .first<any>()
-  if (!row) return null
-  const user = mapUserRow(row)
-  return { user, passwordHash: row.password_hash as string }
-}
-
-function mapUserRow(row: any): User {
-  return {
-    id: row.id as string,
-    email: row.email as string,
-    is_admin: Boolean(row.is_admin),
-    created_at: row.created_at as string,
-    updated_at: row.updated_at as string
-  }
-}
-
-async function hashPassword(password: string): Promise<string> {
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, [
-    'deriveBits'
-  ])
-  const derivedBits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    32 * 8
-  )
-  const derived = new Uint8Array(derivedBits)
-  return `${toBase64(salt)}:${toBase64(derived)}`
-}
-
-async function verifyPassword(hash: string, password: string): Promise<boolean> {
-  const [saltB64, digestB64] = hash.split(':')
-  if (!saltB64 || !digestB64) return false
-  const salt = fromBase64(saltB64)
-  const expected = fromBase64(digestB64)
-  const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, [
-    'deriveBits'
-  ])
-  const derivedBits = await crypto.subtle.deriveBits(
-    // 100000 までしか対応していない環境のため
-    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    expected.length * 8
-  )
-  const derived = new Uint8Array(derivedBits)
-  return timingSafeEqual(derived, expected)
-}
-
-function toBase64(data: Uint8Array): string {
-  let str = ''
-  for (const byte of data) {
-    str += String.fromCharCode(byte)
-  }
-  return btoa(str)
-}
-
-function fromBase64(value: string): Uint8Array {
-  const bin = atob(value)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) {
-    out[i] = bin.charCodeAt(i)
-  }
-  return out
-}
-
-function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) {
-    diff |= a[i] ^ b[i]
-  }
-  return diff === 0
-}
-
-async function fetchChats(c: any): Promise<ChatProfile[]> {
-  const result = await c.env.DB.prepare(
-    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+// userId を指定するとそのユーザーのチャットのみ、null なら全件（API Key用）
+async function fetchChats(c: any, userId: string | null): Promise<ChatProfile[]> {
+  const baseQuery = `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
             GROUP_CONCAT(DISTINCT ct.target) AS targets
      FROM chat_profiles cp
-     LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
-     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
-     ORDER BY cp.created_at ASC`
-  ).all<any>()
+     LEFT JOIN chat_targets ct ON ct.chat_id = cp.id`
+
+  let result
+  if (userId) {
+    result = await c.env.DB.prepare(
+      `${baseQuery}
+       WHERE cp.owner_user_id = ?
+       GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
+       ORDER BY cp.created_at ASC`
+    ).bind(userId).all<any>()
+  } else {
+    result = await c.env.DB.prepare(
+      `${baseQuery}
+       GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
+       ORDER BY cp.created_at ASC`
+    ).all<any>()
+  }
   const rows = result.results || []
   return rows.map(mapChatRow)
 }
@@ -813,6 +665,22 @@ async function fetchChat(c: any, id: string): Promise<ChatProfile | null> {
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(id)
+    .first<any>()
+  if (!row) return null
+  return mapChatRow(row)
+}
+
+// 所有者チェック付きでチャットを取得
+async function fetchChatIfOwned(c: any, id: string, userId: string): Promise<ChatProfile | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+            GROUP_CONCAT(DISTINCT ct.target) AS targets
+     FROM chat_profiles cp
+     LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
+     WHERE cp.id = ? AND cp.owner_user_id = ?
+     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
+  )
+    .bind(id, userId)
     .first<any>()
   if (!row) return null
   return mapChatRow(row)
@@ -833,6 +701,22 @@ async function fetchChatByTarget(c: any, target: string): Promise<ChatProfile | 
   return mapChatRow(row)
 }
 
+// 所有者チェック付きでターゲットからチャットを取得
+async function fetchChatByTargetIfOwned(c: any, target: string, userId: string): Promise<ChatProfile | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at,
+            GROUP_CONCAT(DISTINCT ct.target) AS targets
+     FROM chat_targets ct
+     JOIN chat_profiles cp ON cp.id = ct.chat_id
+     WHERE ct.target = ? AND cp.owner_user_id = ?
+     GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
+  )
+    .bind(target, userId)
+    .first<any>()
+  if (!row) return null
+  return mapChatRow(row)
+}
+
 async function resolveChat(c: any, key: string): Promise<ChatProfile | null> {
   const sanitized = sanitizeAlias(key)
   if (sanitized) {
@@ -842,6 +726,21 @@ async function resolveChat(c: any, key: string): Promise<ChatProfile | null> {
   const normalizedTarget = normalizeTarget(key, 'web')
   if (normalizedTarget) {
     const byTarget = await fetchChatByTarget(c, normalizedTarget)
+    if (byTarget) return byTarget
+  }
+  return null
+}
+
+// 所有者チェック付きでチャットを解決
+async function resolveChatIfOwned(c: any, key: string, userId: string): Promise<ChatProfile | null> {
+  const sanitized = sanitizeAlias(key)
+  if (sanitized) {
+    const byId = await fetchChatIfOwned(c, sanitized, userId)
+    if (byId) return byId
+  }
+  const normalizedTarget = normalizeTarget(key, 'web')
+  if (normalizedTarget) {
+    const byTarget = await fetchChatByTargetIfOwned(c, normalizedTarget, userId)
     if (byTarget) return byTarget
   }
   return null
@@ -878,13 +777,21 @@ async function replaceTargets(c: any, chatId: string, targets: string[]) {
   await c.env.DB.batch(statements)
 }
 
-async function listKnowledge(c: any, chatId: string): Promise<KnowledgeAsset[]> {
-  const base = `SELECT id, chat_id, type, title, source_url, original_filename, storage_path, status, embedding_count, error_message, created_at, updated_at
-                FROM knowledge_assets`
-  const stmt =
-    chatId && chatId.trim() !== ''
-      ? c.env.DB.prepare(`${base} WHERE chat_id = ? ORDER BY created_at DESC LIMIT 200`).bind(chatId)
-      : c.env.DB.prepare(`${base} ORDER BY created_at DESC LIMIT 200`)
+// userId を指定するとそのユーザーのチャットに紐づくナレッジのみ取得
+async function listKnowledge(c: any, chatId: string, userId: string): Promise<KnowledgeAsset[]> {
+  const base = `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
+                       ka.storage_path, ka.status, ka.embedding_count, ka.error_message, ka.created_at, ka.updated_at
+                FROM knowledge_assets ka
+                JOIN chat_profiles cp ON cp.id = ka.chat_id
+                WHERE cp.owner_user_id = ?`
+
+  let stmt
+  if (chatId && chatId.trim() !== '') {
+    stmt = c.env.DB.prepare(`${base} AND ka.chat_id = ? ORDER BY ka.created_at DESC LIMIT 200`).bind(userId, chatId)
+  } else {
+    stmt = c.env.DB.prepare(`${base} ORDER BY ka.created_at DESC LIMIT 200`).bind(userId)
+  }
+
   const result = await stmt.all<any>()
   const rows = result.results || []
   return rows.map((row) => ({
