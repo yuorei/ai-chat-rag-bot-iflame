@@ -7,6 +7,7 @@ import {
   fetchSignInMethodsForEmail,
 } from "firebase/auth";
 import { getFirebaseAuth, getAppUrl } from "../lib/firebase";
+import { getFirebaseErrorMessage } from "../lib/firebase-errors";
 
 export function meta() {
   return [
@@ -52,7 +53,7 @@ export default function Login() {
           nav("/dashboard");
         })
         .catch((err) => {
-          setError(err.message);
+          setError(getFirebaseErrorMessage(err));
           setVerifying(false);
         });
     }
@@ -87,7 +88,7 @@ export default function Login() {
       window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
       setEmailSent(true);
     } catch (err) {
-      setError((err as Error).message);
+      setError(getFirebaseErrorMessage(err));
     } finally {
       setLoading(false);
     }
