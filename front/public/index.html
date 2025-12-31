@@ -124,9 +124,37 @@
 
         .chat-input {
             display: flex;
-            padding: 20px;
+            flex-direction: column;
+            padding: 15px 20px 20px;
             background: #f8f9fa;
             border-top: 1px solid #e9ecef;
+        }
+
+        .chat-options {
+            margin-bottom: 10px;
+        }
+
+        .page-context-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: #666;
+            cursor: pointer;
+        }
+
+        .page-context-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .page-context-option:hover {
+            color: #4a90e2;
+        }
+
+        .chat-input-row {
+            display: flex;
         }
 
         .chat-input input {
@@ -197,8 +225,16 @@
         </div>
 
         <div class="chat-input">
-            <input type="text" id="messageInput" placeholder="メッセージを入力してください..." onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()" id="sendButton">送信</button>
+            <div class="chat-options" id="chatOptions" style="display: none;">
+                <label class="page-context-option">
+                    <input type="checkbox" id="onlyPageContext" checked>
+                    <span>このページについて質問する</span>
+                </label>
+            </div>
+            <div class="chat-input-row">
+                <input type="text" id="messageInput" placeholder="メッセージを入力してください..." onkeypress="handleKeyPress(event)">
+                <button onclick="sendMessage()" id="sendButton">送信</button>
+            </div>
         </div>
     </div>
 
@@ -209,6 +245,9 @@
         const API_BASE = normalizeApiBase(apiBaseParam || window.location.origin);
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
+
+        // 親ページのコンテキストを保持
+        let pageContext = null;
 
         function normalizeApiBase(value) {
             if (!value) return '';
@@ -278,6 +317,15 @@
                 if (CHAT_ID) {
                     payload.chat_id = CHAT_ID;
                 }
+                // ページコンテキストがある場合は送信
+                if (pageContext) {
+                    payload.page_context = pageContext;
+                }
+                // 「このページについて質問する」チェックボックスの状態を送信
+                const onlyPageContextCheckbox = document.getElementById('onlyPageContext');
+                if (onlyPageContextCheckbox && onlyPageContextCheckbox.checked) {
+                    payload.only_page_context = true;
+                }
 
                 const response = await fetch(`${API_BASE}/chat`, {
                     method: 'POST',
@@ -324,6 +372,16 @@
             if (event.data.type === 'sendMessage') {
                 document.getElementById('messageInput').value = event.data.message;
                 sendMessage();
+            }
+            // 親ページからのコンテキスト情報を受信
+            if (event.data.type === 'pageContext') {
+                pageContext = event.data.context;
+                console.log('[chat] Received page context:', pageContext);
+                // ページコンテキストがある場合、チェックボックスを表示
+                const optionsElement = document.getElementById('chatOptions');
+                if (optionsElement && pageContext && (pageContext.bodyText || pageContext.title)) {
+                    optionsElement.style.display = 'flex';
+                }
             }
         });
     </script>
