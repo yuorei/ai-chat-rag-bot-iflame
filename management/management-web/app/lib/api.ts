@@ -22,8 +22,13 @@ export async function apiFetch<T = any>(
       if (currentUser) {
         idToken = await currentUser.getIdToken()
       }
-    } catch {
-      // Firebase 初期化エラーは無視してリクエストを続行
+    } catch (error) {
+      // Firebase 初期化エラーなどでトークン取得に失敗した場合は、少なくとも開発環境ではログを出す
+      if (import.meta.env && import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to get Firebase ID token. Proceeding without auth token.', error)
+      }
+      // プロダクションでは挙動を変えず、トークンなしでリクエストを続行する
     }
   }
 
