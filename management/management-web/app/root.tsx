@@ -44,15 +44,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="firebase-api-key" content={data?.firebaseConfig?.apiKey || ""} />
+        <meta name="firebase-auth-domain" content={data?.firebaseConfig?.authDomain || ""} />
+        <meta name="firebase-project-id" content={data?.firebaseConfig?.projectId || ""} />
+        <meta name="app-url" content={data?.appUrl || ""} />
         <Meta />
         <Links />
       </head>
       <body>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `window.__FIREBASE_CONFIG__=${JSON.stringify(data?.firebaseConfig || {})};window.__APP_URL__=${JSON.stringify(data?.appUrl || "")};`,
-          }}
-        />
         {children}
         <ScrollRestoration />
         <Scripts />

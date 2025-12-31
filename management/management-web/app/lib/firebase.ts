@@ -1,20 +1,28 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app"
 import { getAuth, type Auth } from "firebase/auth"
 
-declare global {
-  interface Window {
-    __FIREBASE_CONFIG__?: {
-      apiKey: string
-      authDomain: string
-      projectId: string
-    }
-    __APP_URL__?: string
+function getMetaContent(name: string): string {
+  if (typeof document === 'undefined') {
+    return ''
   }
+  // Whitelist of allowed meta tag names for security
+  const allowedNames = ['firebase-api-key', 'firebase-auth-domain', 'firebase-project-id', 'app-url']
+  if (!allowedNames.includes(name)) {
+    return ''
+  }
+  const meta = document.querySelector(`meta[name="${name}"]`)
+  return meta?.getAttribute('content') || ''
 }
 
 function getFirebaseConfig() {
-  if (typeof window !== "undefined" && window.__FIREBASE_CONFIG__) {
-    return window.__FIREBASE_CONFIG__
+  if (typeof window !== 'undefined') {
+    const apiKey = getMetaContent('firebase-api-key')
+    const authDomain = getMetaContent('firebase-auth-domain')
+    const projectId = getMetaContent('firebase-project-id')
+
+    if (apiKey && authDomain && projectId) {
+      return { apiKey, authDomain, projectId }
+    }
   }
   // フォールバック（開発用）
   return {
@@ -25,8 +33,9 @@ function getFirebaseConfig() {
 }
 
 export function getAppUrl(): string {
-  if (typeof window !== "undefined") {
-    return window.__APP_URL__ || window.location.origin
+  if (typeof window !== 'undefined') {
+    const appUrl = getMetaContent('app-url')
+    return appUrl || window.location.origin
   }
   return ""
 }
