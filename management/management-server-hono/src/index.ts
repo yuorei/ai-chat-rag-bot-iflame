@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
 
@@ -1080,8 +1080,8 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
 
 // --- UI Settings helpers ---
 
-async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
-  const row = await c.env.DB.prepare(
+async function fetchUISettings(ctx: Context<{ Bindings: Bindings; Variables: Variables }>, chatId: string): Promise<ChatUISettings | null> {
+  const row = await ctx.env.DB.prepare(
     `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
      FROM chat_ui_settings
      WHERE chat_id = ?`
