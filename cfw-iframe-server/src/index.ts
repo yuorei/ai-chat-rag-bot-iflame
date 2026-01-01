@@ -2,6 +2,29 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 // ---------------------------------------------------------------------------
+// Origin Cache (TTL: 5 minutes)
+// ---------------------------------------------------------------------------
+const ORIGIN_CACHE_TTL_MS = 5 * 60 * 1000
+const originCache = new Map<string, { allowed: boolean; expiresAt: number }>()
+
+function getCachedOrigin(origin: string): boolean | null {
+  const entry = originCache.get(origin)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    originCache.delete(origin)
+    return null
+  }
+  return entry.allowed
+}
+
+function setCachedOrigin(origin: string, allowed: boolean): void {
+  originCache.set(origin, {
+    allowed,
+    expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type Bindings = {
@@ -54,7 +77,7 @@ function normalizeTarget(target: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: Check if origin is registered in database
+// Helper: Check if origin is registered in database (with cache)
 // ---------------------------------------------------------------------------
 async function isOriginAllowed(db: D1Database, origin: string): Promise<boolean> {
   if (!origin) return false
@@ -62,20 +85,33 @@ async function isOriginAllowed(db: D1Database, origin: string): Promise<boolean>
   const normalized = normalizeTarget(origin)
   if (!normalized) return false
 
+  // Check cache first
+  const cached = getCachedOrigin(normalized)
+  if (cached !== null) {
+    return cached
+  }
+
   // Check chat_targets table
   const targetRow = await db
     .prepare('SELECT 1 FROM chat_targets WHERE target = ? LIMIT 1')
     .bind(normalized)
     .first()
-  if (targetRow) return true
+  if (targetRow) {
+    setCachedOrigin(normalized, true)
+    return true
+  }
 
   // Check chat_profiles.target directly
   const profileRow = await db
     .prepare('SELECT 1 FROM chat_profiles WHERE target = ? AND target_type = ? LIMIT 1')
     .bind(normalized, 'web')
     .first()
-  if (profileRow) return true
+  if (profileRow) {
+    setCachedOrigin(normalized, true)
+    return true
+  }
 
+  setCachedOrigin(normalized, false)
   return false
 }
 
