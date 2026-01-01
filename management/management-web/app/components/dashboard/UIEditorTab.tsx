@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { fetchUISettings, updateUISettings } from "../../lib/api";
 import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels } from "../../lib/types";
 
@@ -84,16 +84,43 @@ export function UIEditorTab({
     labels: true,
     widget: false,
   });
+  const [colorErrors, setColorErrors] = useState<Partial<Record<keyof ThemeColors, string>>>({});
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // カラーバリデーション関数
+  const validateColor = (color: string | undefined): string | null => {
+    // undefined または空文字列の場合はバリデーションをスキップ（デフォルト値が使用される）
+    if (!color) return null;
+    // #RGB または #RRGGBB 形式をチェック
+    const hexColorRegex = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
+    if (!hexColorRegex.test(color)) {
+      return "有効な色形式で入力してください（例: #RRGGBB）";
+    }
+    return null;
+  };
 
   const loadSettings = useCallback(async () => {
     if (!activeChatId) return;
     setLoading(true);
     try {
       const settings = await fetchUISettings(activeChatId);
-      setColors({ ...DEFAULT_COLORS, ...settings.theme_settings.colors });
+      const loadedColors = { ...DEFAULT_COLORS, ...settings.theme_settings.colors };
+      setColors(loadedColors);
       setLabels({ ...DEFAULT_LABELS, ...settings.theme_settings.labels });
       setWidgetSettings(settings.widget_settings || {});
+      
+      // 読み込んだ色をバリデーション（undefinedやnullはスキップ）
+      const errors: Partial<Record<keyof ThemeColors, string>> = {};
+      (Object.keys(loadedColors) as (keyof ThemeColors)[]).forEach((key) => {
+        const colorValue = loadedColors[key];
+        if (colorValue) {  // 値が存在する場合のみバリデーション
+          const error = validateColor(colorValue);
+          if (error) {
+            errors[key] = error;
+          }
+        }
+      });
+      setColorErrors(errors);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -124,6 +151,11 @@ export function UIEditorTab({
       setError("チャットを選択してください");
       return;
     }
+    // カラーバリデーションエラーがある場合は保存できない
+    if (Object.keys(colorErrors).length > 0) {
+      setError("色の値が正しくありません。修正してから保存してください。");
+      return;
+    }
     setSaving(true);
     setStatus(null);
     setError(null);
@@ -140,6 +172,17 @@ export function UIEditorTab({
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
     setColors((prev) => ({ ...prev, [key]: value }));
+    // バリデーションを実行
+    const error = validateColor(value);
+    setColorErrors((prev) => {
+      const next = { ...prev };
+      if (error) {
+        next[key] = error;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
   };
 
   const handleLabelChange = (key: keyof ThemeLabels, value: string) => {
@@ -202,7 +245,7 @@ export function UIEditorTab({
               </button>
               <button
                 onClick={handleSave}
-                disabled={saving || !activeChatId}
+                disabled={saving || !activeChatId || Object.keys(colorErrors).length > 0}
                 className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
               >
                 <Save className="w-4 h-4" />
@@ -228,24 +271,36 @@ export function UIEditorTab({
           {expandedSections.colors && (
             <div className="p-4 pt-0 grid grid-cols-1 sm:grid-cols-2 gap-3">
               {(Object.keys(COLOR_LABELS) as (keyof ThemeColors)[]).map((key) => (
-                <div key={key} className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={colors[key] || DEFAULT_COLORS[key]}
-                    onChange={(e) => handleColorChange(key, e.target.value)}
-                    className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <label className="text-sm text-gray-700 truncate block">
-                      {COLOR_LABELS[key]}
-                    </label>
+                <div key={key} className="flex flex-col gap-1">
+                  <div className="flex items-center gap-3">
                     <input
-                      type="text"
+                      type="color"
                       value={colors[key] || DEFAULT_COLORS[key]}
                       onChange={(e) => handleColorChange(key, e.target.value)}
-                      className="w-full text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                      className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
                     />
+                    <div className="flex-1 min-w-0">
+                      <label className="text-sm text-gray-700 truncate block">
+                        {COLOR_LABELS[key]}
+                      </label>
+                      <input
+                        type="text"
+                        value={colors[key] || DEFAULT_COLORS[key]}
+                        onChange={(e) => handleColorChange(key, e.target.value)}
+                        className={`w-full text-xs px-2 py-1 rounded border focus:ring-1 focus:outline-none ${
+                          colorErrors[key]
+                            ? "text-red-600 bg-red-50 border-red-300 focus:ring-red-500 focus:border-red-500"
+                            : "text-gray-500 bg-gray-50 border-gray-200 focus:ring-blue-500 focus:border-blue-500"
+                        }`}
+                      />
+                    </div>
                   </div>
+                  {colorErrors[key] && (
+                    <p className="text-xs text-red-600 flex items-center gap-1 ml-12">
+                      <AlertCircle className="w-3 h-3" />
+                      {colorErrors[key]}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
