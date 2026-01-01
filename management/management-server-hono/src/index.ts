@@ -35,6 +35,8 @@ type Bindings = {
   MGMT_COOKIE_SECURE?: string
   MGMT_MAX_UPLOAD_MB?: string
   MGMT_HTTP_TIMEOUT_SEC?: string
+  ASSETS_BUCKET: R2Bucket
+  ASSETS_PUBLIC_URL?: string
 }
 
 type Variables = {
@@ -128,12 +130,18 @@ type WidgetSettings = {
     color?: string
     label?: string
     closeLabel?: string
+    imageUrl?: string
   }
   window?: {
     width?: string
     height?: string
     mobileWidth?: string
     mobileHeight?: string
+  }
+  banner?: {
+    text?: string
+    backgroundColor?: string
+    textColor?: string
   }
 }
 
@@ -414,6 +422,117 @@ app.put('/api/chats/:id/ui-settings', async (c) => {
     await upsertUISettings(c, id, payload.theme_settings || {}, payload.widget_settings || {})
     const settings = await fetchUISettings(c, id)
     return c.json(settings)
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// Button Image Upload
+app.post('/api/chats/:id/button-image', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const chatId = sanitizeAlias(c.req.param('id'))
+
+  try {
+    const chat = await fetchChatIfOwned(c, chatId, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const form = await c.req.formData()
+    const image = form.get('image')
+    if (!(image instanceof File)) {
+      return jsonError(c, 400, 'image file is required')
+    }
+
+    const maxSize = 1024 * 1024 // 1MB
+    if (image.size > maxSize) {
+      return jsonError(c, 400, 'image size must be under 1MB')
+    }
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    if (!allowedTypes.includes(image.type)) {
+      return jsonError(c, 400, 'invalid image format (allowed: png, jpg, gif, webp, svg)')
+    }
+
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/svg+xml': 'svg'
+    }
+    const ext = extMap[image.type] || 'png'
+
+    // Delete old images first
+    const extensions = ['png', 'jpg', 'gif', 'webp', 'svg']
+    for (const oldExt of extensions) {
+      try {
+        await c.env.ASSETS_BUCKET.delete(`chat/${chatId}/button.${oldExt}`)
+      } catch {
+        // Ignore delete errors
+      }
+    }
+
+    const key = `chat/${chatId}/button.${ext}`
+    await c.env.ASSETS_BUCKET.put(key, await image.arrayBuffer(), {
+      httpMetadata: { contentType: image.type }
+    })
+
+    // Generate public URL
+    const publicUrl = c.env.ASSETS_PUBLIC_URL
+      ? `${c.env.ASSETS_PUBLIC_URL}/${key}`
+      : `https://ai-chat-assets.${c.env.FIREBASE_PROJECT_ID || 'default'}.r2.cloudflarestorage.com/${key}`
+
+    // Update widget_settings with imageUrl
+    const settings = await fetchUISettings(c, chatId) || getDefaultUISettings(chatId)
+    const widgetSettings = settings.widget_settings || {}
+    widgetSettings.button = { ...widgetSettings.button, imageUrl: publicUrl }
+    await upsertUISettings(c, chatId, settings.theme_settings || {}, widgetSettings)
+
+    return c.json({ imageUrl: publicUrl, size: image.size })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// Button Image Delete
+app.delete('/api/chats/:id/button-image', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const chatId = sanitizeAlias(c.req.param('id'))
+
+  try {
+    const chat = await fetchChatIfOwned(c, chatId, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    // Delete all possible image extensions
+    const extensions = ['png', 'jpg', 'gif', 'webp', 'svg']
+    for (const ext of extensions) {
+      try {
+        await c.env.ASSETS_BUCKET.delete(`chat/${chatId}/button.${ext}`)
+      } catch {
+        // Ignore delete errors
+      }
+    }
+
+    // Clear imageUrl from widget_settings
+    const settings = await fetchUISettings(c, chatId)
+    if (settings) {
+      const widgetSettings = settings.widget_settings || {}
+      if (widgetSettings.button) {
+        delete widgetSettings.button.imageUrl
+      }
+      await upsertUISettings(c, chatId, settings.theme_settings || {}, widgetSettings)
+    }
+
+    return c.json({ deleted: true })
   } catch (err) {
     console.error(err)
     return serverError(c)
@@ -1146,6 +1265,11 @@ function getDefaultUISettings(chatId: string): ChatUISettings {
         height: '600px',
         mobileWidth: 'calc(100vw - 20px)',
         mobileHeight: 'calc(100vh - 150px)'
+      },
+      banner: {
+        text: 'チャットで質問できます！',
+        backgroundColor: '#4dd0e1',
+        textColor: '#000000'
       }
     },
     created_at: '',

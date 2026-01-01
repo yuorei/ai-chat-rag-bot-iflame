@@ -65,6 +65,13 @@ export type WidgetButton = {
   color?: string;
   label?: string;
   closeLabel?: string;
+  imageUrl?: string;
+};
+
+export type WidgetBanner = {
+  text?: string;
+  backgroundColor?: string;
+  textColor?: string;
 };
 
 export type WidgetWindow = {
@@ -77,6 +84,7 @@ export type WidgetWindow = {
 export type WidgetSettings = {
   button?: WidgetButton;
   window?: WidgetWindow;
+  banner?: WidgetBanner;
 };
 
 export type ChatUISettings = {

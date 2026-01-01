@@ -199,10 +199,15 @@
     }
   }
 
-  function mountWidget(chatId) {
+  function mountWidget(chatId, uiSettings) {
     if (document.getElementById('iframe-widget-frame')) {
       return;
     }
+
+    // UI設定を展開
+    const widgetConfig = uiSettings && uiSettings.widget ? uiSettings.widget : {};
+    const buttonConfig = widgetConfig.button || {};
+    const bannerConfig = widgetConfig.banner || {};
 
     // モバイル判定
     const isMobile = window.innerWidth <= 768;
@@ -211,10 +216,10 @@
     // ボタンのサイズ（直径）
     // デフォルトを少し大きめにして、絵文字と見た目を強調する
     // モバイルではさらに大きくする
-    const defaultButtonSize = isMobile ? '72' : '64';
-    const buttonSize = parseInt(dataset.buttonSize || defaultButtonSize, 10);
+    const defaultButtonSize = isMobile ? 72 : 64;
+    const buttonSize = parseInt(dataset.buttonSize || buttonConfig.size || defaultButtonSize, 10);
     // ボタンの bottom（px）
-    const buttonBottom = parseInt(dataset.buttonBottom || '20', 10);
+    const buttonBottom = parseInt(dataset.buttonBottom || buttonConfig.bottom || '20', 10);
     // ボタンと iframe の隙間
     const gap = parseInt(dataset.gap || '16', 10);
 
@@ -244,29 +249,65 @@
     const toggleButton = document.createElement('button');
     toggleButton.type = 'button';
     toggleButton.id = 'iframe-widget-toggle';
-    toggleButton.textContent = dataset.buttonLabel || '💬';
     toggleButton.style.position = 'fixed';
-    toggleButton.style.right = dataset.buttonRight || '20px';
-    toggleButton.style.bottom = dataset.buttonBottom || '20px';
+    toggleButton.style.right = dataset.buttonRight || (buttonConfig.right ? buttonConfig.right + 'px' : '20px');
+    toggleButton.style.bottom = buttonBottom + 'px';
     toggleButton.style.width = buttonSize + 'px';
     toggleButton.style.height = buttonSize + 'px';
     toggleButton.style.borderRadius = '50%';
     toggleButton.style.border = 'none';
-    toggleButton.style.background = dataset.buttonColor || '#4a90e2';
-    toggleButton.style.color = '#fff';
-    toggleButton.style.fontSize = isMobile ? '32px' : '28px';
     toggleButton.style.cursor = 'pointer';
     toggleButton.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)';
     toggleButton.style.zIndex = '2147483647';
+    toggleButton.style.padding = '0';
+    toggleButton.style.overflow = 'hidden';
+
+    // ボタン画像またはテキストを設定
+    const buttonImageUrl = buttonConfig.imageUrl;
+    const buttonLabel = dataset.buttonLabel || buttonConfig.label || '💬';
+    const closeLabel = dataset.closeLabel || buttonConfig.closeLabel || '✕';
+    const buttonColor = dataset.buttonColor || buttonConfig.color || '#4a90e2';
+
+    if (buttonImageUrl) {
+      // カスタム画像を使用
+      toggleButton.style.background = 'transparent';
+      const img = document.createElement('img');
+      img.src = buttonImageUrl;
+      img.style.width = '100%';
+      img.style.height = '100%';
+      img.style.objectFit = 'cover';
+      img.style.borderRadius = '50%';
+      img.alt = 'Chat';
+      img.onerror = function() {
+        // 画像読み込み失敗時はフォールバック
+        toggleButton.removeChild(img);
+        toggleButton.textContent = buttonLabel;
+        toggleButton.style.background = buttonColor;
+        toggleButton.style.color = '#fff';
+        toggleButton.style.fontSize = isMobile ? '32px' : '28px';
+      };
+      toggleButton.appendChild(img);
+    } else {
+      // 絵文字/テキストを使用
+      toggleButton.textContent = buttonLabel;
+      toggleButton.style.background = buttonColor;
+      toggleButton.style.color = '#fff';
+      toggleButton.style.fontSize = isMobile ? '32px' : '28px';
+    }
+
+    // バナー設定を展開
+    const bannerText = bannerConfig.text || 'チャットで質問できます！';
+    const bannerBackgroundColor = bannerConfig.backgroundColor || '#4dd0e1';
+    const bannerTextColor = bannerConfig.textColor || '#000000';
 
     // メッセージバナーの作成
     const messageBanner = document.createElement('div');
     messageBanner.id = 'iframe-widget-banner';
     messageBanner.style.position = 'fixed';
-    messageBanner.style.right = dataset.buttonRight || '20px';
+    messageBanner.style.right = dataset.buttonRight || (buttonConfig.right ? buttonConfig.right + 'px' : '20px');
     messageBanner.style.bottom = (buttonBottom + buttonSize + gap) + 'px'; // ボタンの上に配置
-    messageBanner.style.background = '#4dd0e1';
-    messageBanner.style.color = '#000';
+    messageBanner.style.background = bannerBackgroundColor;
+    messageBanner.style.color = bannerTextColor;
     messageBanner.style.padding = '12px 16px';
     messageBanner.style.borderRadius = '8px';
     messageBanner.style.display = 'flex';
@@ -285,7 +326,7 @@
     bannerIcon.style.width = iconSize;
     bannerIcon.style.height = iconSize;
     bannerIcon.style.flexShrink = '0';
-    bannerIcon.style.color = '#000';
+    bannerIcon.style.color = bannerTextColor;
     bannerIcon.setAttribute('viewBox', '0 0 24 24');
     bannerIcon.setAttribute('fill', 'none');
     bannerIcon.setAttribute('stroke', 'currentColor');
@@ -294,19 +335,19 @@
     iconPath.setAttribute('d', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z');
     bannerIcon.appendChild(iconPath);
 
-    // バナーテキスト
-    const bannerText = document.createElement('span');
-    bannerText.textContent = 'チャットで質問できます！';
-    bannerText.style.flex = '1';
-    bannerText.style.color = '#000';
-    bannerText.style.fontSize = isMobile ? '16px' : '15px';
+    // バナーテキスト要素
+    const bannerTextEl = document.createElement('span');
+    bannerTextEl.textContent = bannerText;
+    bannerTextEl.style.flex = '1';
+    bannerTextEl.style.color = bannerTextColor;
+    bannerTextEl.style.fontSize = isMobile ? '16px' : '15px';
 
     // バナーの閉じるボタン
     const bannerClose = document.createElement('button');
     bannerClose.textContent = '×';
     bannerClose.style.background = 'none';
     bannerClose.style.border = 'none';
-    bannerClose.style.color = '#000';
+    bannerClose.style.color = bannerTextColor;
     bannerClose.style.cursor = 'pointer';
     const closeSize = isMobile ? '28px' : '24px';
     bannerClose.style.fontSize = isMobile ? '24px' : '20px';
@@ -326,7 +367,7 @@
     });
 
     messageBanner.appendChild(bannerIcon);
-    messageBanner.appendChild(bannerText);
+    messageBanner.appendChild(bannerTextEl);
     messageBanner.appendChild(bannerClose);
 
     // バナーの閉じるボタンのイベント
@@ -337,9 +378,34 @@
     toggleButton.addEventListener('click', () => {
       const isHidden = iframe.style.display === 'none';
       iframe.style.display = isHidden ? 'block' : 'none';
-      toggleButton.textContent = isHidden
-        ? (dataset.closeLabel || '✕')
-        : (dataset.buttonLabel || '💬');
+
+      // ボタンの表示を切り替え
+      if (buttonImageUrl) {
+        // 画像ボタンの場合: 開いている時は閉じるボタン、閉じている時は画像
+        if (isHidden) {
+          // チャットを開く時: 閉じるボタンに切り替え
+          toggleButton.innerHTML = '';
+          toggleButton.textContent = closeLabel;
+          toggleButton.style.background = buttonColor;
+          toggleButton.style.color = '#fff';
+          toggleButton.style.fontSize = isMobile ? '32px' : '28px';
+        } else {
+          // チャットを閉じる時: 画像に戻す
+          toggleButton.innerHTML = '';
+          toggleButton.style.background = 'transparent';
+          const img = document.createElement('img');
+          img.src = buttonImageUrl;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.objectFit = 'cover';
+          img.style.borderRadius = '50%';
+          img.alt = 'Chat';
+          toggleButton.appendChild(img);
+        }
+      } else {
+        // テキスト/絵文字ボタンの場合
+        toggleButton.textContent = isHidden ? closeLabel : buttonLabel;
+      }
 
       if (isHidden) {
         // チャットを開く
@@ -392,11 +458,30 @@
       });
   }
 
+  // UI設定を取得する関数
+  function fetchUISettings(chatId) {
+    return fetch(`${apiBase}/ui-settings?chatId=${encodeURIComponent(chatId)}`)
+      .then((res) => {
+        if (!res.ok) {
+          console.warn('[iframe-widget] Failed to fetch UI settings, using defaults');
+          return null;
+        }
+        return res.json();
+      })
+      .catch((err) => {
+        console.warn('[iframe-widget] Error fetching UI settings:', err);
+        return null;
+      });
+  }
+
   function start() {
     requestChatId()
       .then((chatId) => {
-        mountWidget(chatId);
-        window.dispatchEvent(new CustomEvent('iframe-widget-ready'));
+        // UI設定を取得してからウィジェットをマウント
+        return fetchUISettings(chatId).then((uiSettings) => {
+          mountWidget(chatId, uiSettings);
+          window.dispatchEvent(new CustomEvent('iframe-widget-ready'));
+        });
       })
       .catch((err) => {
         console.error('[iframe-widget] Failed to initialize widget', err);

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp } from "lucide-react";
-import { fetchUISettings, updateUISettings } from "../../lib/api";
-import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels } from "../../lib/types";
+import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp, Upload, Trash2 } from "lucide-react";
+import { fetchUISettings, updateUISettings, uploadButtonImage, deleteButtonImage } from "../../lib/api";
+import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels, WidgetBanner } from "../../lib/types";
 
 // プレビュー用のiframeベースURL（環境変数または固定値）
 const PREVIEW_BASE_URL = typeof window !== 'undefined'
@@ -45,6 +45,12 @@ const DEFAULT_LABELS: ThemeLabels = {
   welcomeMessage: "こんにちは！何かお手伝いできることはありますか？",
 };
 
+const DEFAULT_BANNER: WidgetBanner = {
+  text: "チャットで質問できます！",
+  backgroundColor: "#4dd0e1",
+  textColor: "#000000",
+};
+
 const COLOR_LABELS: Record<keyof ThemeColors, string> = {
   headerBackground: "ヘッダー背景",
   headerText: "ヘッダー文字",
@@ -78,13 +84,18 @@ export function UIEditorTab({
   const [colors, setColors] = useState<ThemeColors>({ ...DEFAULT_COLORS });
   const [labels, setLabels] = useState<ThemeLabels>({ ...DEFAULT_LABELS });
   const [widgetSettings, setWidgetSettings] = useState<WidgetSettings>({});
+  const [bannerSettings, setBannerSettings] = useState<WidgetBanner>({ ...DEFAULT_BANNER });
+  const [buttonImageUrl, setButtonImageUrl] = useState<string | null>(null);
+  const [buttonColor, setButtonColor] = useState("#4a90e2");
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
   const [expandedSections, setExpandedSections] = useState({
     colors: true,
     labels: true,
-    widget: false,
+    widget: true,
   });
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadSettings = useCallback(async () => {
     if (!activeChatId) return;
@@ -94,6 +105,9 @@ export function UIEditorTab({
       setColors({ ...DEFAULT_COLORS, ...settings.theme_settings.colors });
       setLabels({ ...DEFAULT_LABELS, ...settings.theme_settings.labels });
       setWidgetSettings(settings.widget_settings || {});
+      setBannerSettings({ ...DEFAULT_BANNER, ...settings.widget_settings?.banner });
+      setButtonImageUrl(settings.widget_settings?.button?.imageUrl || null);
+      setButtonColor(settings.widget_settings?.button?.color || "#4a90e2");
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -129,13 +143,72 @@ export function UIEditorTab({
     setError(null);
     try {
       const themeSettings: ThemeSettings = { colors, labels };
-      await updateUISettings(activeChatId, themeSettings, widgetSettings);
+      const updatedWidgetSettings: WidgetSettings = {
+        ...widgetSettings,
+        banner: bannerSettings,
+        button: {
+          ...widgetSettings.button,
+          imageUrl: buttonImageUrl || undefined,
+          color: buttonColor,
+        },
+      };
+      await updateUISettings(activeChatId, themeSettings, updatedWidgetSettings);
       setStatus("デザイン設定を保存しました");
     } catch (err) {
       setError((err as Error).message);
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!activeChatId) return;
+    setUploadingImage(true);
+    setError(null);
+    try {
+      const result = await uploadButtonImage(activeChatId, file);
+      setButtonImageUrl(result.imageUrl);
+      setStatus("画像をアップロードしました");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleImageDelete = async () => {
+    if (!activeChatId) return;
+    setUploadingImage(true);
+    setError(null);
+    try {
+      await deleteButtonImage(activeChatId);
+      setButtonImageUrl(null);
+      setStatus("画像を削除しました");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleImageUpload(file);
+    }
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith("image/")) {
+      handleImageUpload(file);
+    }
+  };
+
+  const handleBannerChange = (key: keyof WidgetBanner, value: string) => {
+    setBannerSettings((prev) => ({ ...prev, [key]: value }));
   };
 
   const handleColorChange = (key: keyof ThemeColors, value: string) => {
@@ -304,6 +377,215 @@ export function UIEditorTab({
                   rows={2}
                   placeholder="こんにちは！何かお手伝いできることはありますか？"
                 />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Widget Settings */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => toggleSection("widget")}
+            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
+          >
+            <h3 className="font-semibold text-gray-900">ウィジェット設定</h3>
+            {expandedSections.widget ? (
+              <ChevronUp className="w-5 h-5 text-gray-500" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-gray-500" />
+            )}
+          </button>
+          {expandedSections.widget && (
+            <div className="p-4 pt-0 space-y-6">
+              {/* Button Image Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  ボタン画像（省略時は絵文字表示）
+                </label>
+                {buttonImageUrl ? (
+                  <div className="flex items-center gap-4">
+                    <div className="relative">
+                      <img
+                        src={buttonImageUrl}
+                        alt="Button"
+                        className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                      >
+                        <Upload className="w-4 h-4" />
+                        変更
+                      </button>
+                      <button
+                        onClick={handleImageDelete}
+                        disabled={uploadingImage}
+                        className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                    onDrop={handleDrop}
+                    onDragOver={(e) => e.preventDefault()}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {uploadingImage ? (
+                      <div className="flex items-center justify-center gap-2 text-gray-500">
+                        <RefreshCw className="w-5 h-5 animate-spin" />
+                        アップロード中...
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 mx-auto text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-600">画像をドロップまたはクリックして選択</p>
+                        <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF, WebP, SVG (最大1MB)</p>
+                      </>
+                    )}
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
+
+              {/* Banner Text */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  バナーテキスト
+                </label>
+                <input
+                  type="text"
+                  value={bannerSettings.text || ""}
+                  onChange={(e) => handleBannerChange("text", e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="チャットで質問できます！"
+                />
+              </div>
+
+              {/* Button Color (when no image) */}
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={buttonColor}
+                  onChange={(e) => setButtonColor(e.target.value)}
+                  className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
+                  disabled={!!buttonImageUrl}
+                />
+                <div className="flex-1 min-w-0">
+                  <label className="text-sm text-gray-700 block">ボタン背景色（画像未設定時）</label>
+                  <input
+                    type="text"
+                    value={buttonColor}
+                    onChange={(e) => setButtonColor(e.target.value)}
+                    disabled={!!buttonImageUrl}
+                    className="w-full text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              {/* Banner Colors */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={bannerSettings.backgroundColor || "#4dd0e1"}
+                    onChange={(e) => handleBannerChange("backgroundColor", e.target.value)}
+                    className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <label className="text-sm text-gray-700 block">バナー背景色</label>
+                    <input
+                      type="text"
+                      value={bannerSettings.backgroundColor || "#4dd0e1"}
+                      onChange={(e) => handleBannerChange("backgroundColor", e.target.value)}
+                      className="w-full text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="color"
+                    value={bannerSettings.textColor || "#000000"}
+                    onChange={(e) => handleBannerChange("textColor", e.target.value)}
+                    className="w-10 h-10 rounded-lg border border-gray-300 cursor-pointer"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <label className="text-sm text-gray-700 block">バナー文字色</label>
+                    <input
+                      type="text"
+                      value={bannerSettings.textColor || "#000000"}
+                      onChange={(e) => handleBannerChange("textColor", e.target.value)}
+                      className="w-full text-xs text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Widget Preview */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  ウィジェットプレビュー
+                </label>
+                <div className="relative bg-gray-100 rounded-lg p-6 min-h-[180px]">
+                  {/* Banner Preview */}
+                  <div
+                    className="absolute right-4 bottom-24 flex items-center gap-3 px-4 py-3 rounded-lg shadow-md max-w-[220px]"
+                    style={{
+                      backgroundColor: bannerSettings.backgroundColor || "#4dd0e1",
+                      color: bannerSettings.textColor || "#000000",
+                    }}
+                  >
+                    <svg
+                      className="w-5 h-5 flex-shrink-0"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span className="text-sm flex-1 truncate">
+                      {bannerSettings.text || "チャットで質問できます！"}
+                    </span>
+                    <span className="text-lg cursor-pointer opacity-70">×</span>
+                  </div>
+
+                  {/* Button Preview */}
+                  <div
+                    className="absolute right-4 bottom-4 w-14 h-14 rounded-full shadow-lg flex items-center justify-center overflow-hidden cursor-pointer"
+                    style={{
+                      backgroundColor: buttonImageUrl ? "transparent" : buttonColor,
+                    }}
+                  >
+                    {buttonImageUrl ? (
+                      <img
+                        src={buttonImageUrl}
+                        alt="Button"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-2xl">
+                        {widgetSettings.button?.label || "💬"}
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="text-xs text-gray-400 absolute left-4 bottom-4">
+                    実際のサイト上での表示イメージ
+                  </p>
+                </div>
               </div>
             </div>
           )}

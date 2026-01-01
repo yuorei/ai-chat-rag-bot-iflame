@@ -82,6 +82,43 @@ export async function updateUISettings(
   });
 }
 
+export async function uploadButtonImage(
+  chatId: string,
+  file: File
+): Promise<{ imageUrl: string; size: number }> {
+  const formData = new FormData();
+  formData.append('image', file);
+
+  let idToken = '';
+  if (typeof window !== 'undefined') {
+    try {
+      const currentUser = getFirebaseAuth().currentUser;
+      if (currentUser) {
+        idToken = await currentUser.getIdToken();
+      }
+    } catch {
+      // Ignore token errors
+    }
+  }
+
+  const res = await fetch(`${apiBase}/api/chats/${chatId}/button-image`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: idToken ? { Authorization: `Bearer ${idToken}` } : {},
+    body: formData,
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || 'upload failed');
+  }
+  return data;
+}
+
+export async function deleteButtonImage(chatId: string): Promise<void> {
+  await apiFetch(`/api/chats/${chatId}/button-image`, { method: 'DELETE' });
+}
+
 declare global {
   interface Window {
     __MGMT_API_BASE__?: string;

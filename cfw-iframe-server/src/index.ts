@@ -425,6 +425,11 @@ function getDefaultWidgetSettings() {
       height: '600px',
       mobileWidth: 'calc(100vw - 20px)',
       mobileHeight: 'calc(100vh - 150px)'
+    },
+    banner: {
+      text: 'チャットで質問できます！',
+      backgroundColor: '#4dd0e1',
+      textColor: '#000000'
     }
   }
 }
