@@ -88,8 +88,9 @@ export function UIEditorTab({
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // カラーバリデーション関数
-  const validateColor = (color: string): string | null => {
-    if (!color) return "色を入力してください";
+  const validateColor = (color: string | undefined): string | null => {
+    // undefined または空文字列の場合はバリデーションをスキップ（デフォルト値が使用される）
+    if (!color) return null;
     // #RGB または #RRGGBB 形式をチェック
     const hexColorRegex = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/;
     if (!hexColorRegex.test(color)) {
@@ -108,12 +109,15 @@ export function UIEditorTab({
       setLabels({ ...DEFAULT_LABELS, ...settings.theme_settings.labels });
       setWidgetSettings(settings.widget_settings || {});
       
-      // 読み込んだ色をバリデーション
+      // 読み込んだ色をバリデーション（undefinedやnullはスキップ）
       const errors: Partial<Record<keyof ThemeColors, string>> = {};
       (Object.keys(loadedColors) as (keyof ThemeColors)[]).forEach((key) => {
-        const error = validateColor(loadedColors[key]);
-        if (error) {
-          errors[key] = error;
+        const colorValue = loadedColors[key];
+        if (colorValue) {  // 値が存在する場合のみバリデーション
+          const error = validateColor(colorValue);
+          if (error) {
+            errors[key] = error;
+          }
         }
       });
       setColorErrors(errors);
@@ -188,8 +192,6 @@ export function UIEditorTab({
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
-
-  const activeChat = chats.find((c) => c.id === activeChatId);
 
   if (!activeChatId) {
     return (
