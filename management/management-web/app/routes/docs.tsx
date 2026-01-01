@@ -4,6 +4,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { getFirebaseAuth } from "../lib/firebase";
 import { apiFetch, AuthError } from "../lib/api";
 import type { User } from "../lib/types";
+import { DEFAULT_WIDGET_BUTTON } from "../../../../shared/constants/ui-defaults";
 
 export function meta() {
   return [
@@ -168,7 +169,7 @@ export default function Docs() {
                     <tr>
                       <td className="px-4 py-3"><code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">data-button-color</code></td>
                       <td className="px-4 py-3 text-slate-600">トグルボタンの背景色</td>
-                      <td className="px-4 py-3 text-slate-500">#4a90e2</td>
+                      <td className="px-4 py-3 text-slate-500">{DEFAULT_WIDGET_BUTTON.color}</td>
                     </tr>
                     <tr>
                       <td className="px-4 py-3"><code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">data-button-label</code></td>
