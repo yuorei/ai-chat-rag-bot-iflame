@@ -16,6 +16,26 @@ export function Header({
   setActiveChatId,
   setSidebarOpen,
 }: HeaderProps) {
+  const getTitle = () => {
+    if (activeTab === "chats") {
+      return "チャット管理";
+    }
+    if (activeTab === "knowledge") {
+      return "ナレッジ投入";
+    }
+    return "デザイン編集";
+  };
+
+  const getDescription = () => {
+    if (activeTab === "chats") {
+      return "チャットAIの登録・編集・削除を行います";
+    }
+    if (activeTab === "knowledge") {
+      return "選択したチャットにナレッジを追加します";
+    }
+    return "チャットUIの外観をカスタマイズします";
+  };
+
   return (
     <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-8 sticky top-0 z-10">
       <div className="flex items-center justify-between w-full gap-4">
@@ -29,14 +49,10 @@ export function Header({
           </button>
           <div>
             <h1 className="text-lg lg:text-xl font-bold text-gray-900">
-              {activeTab === "chats" ? "チャット管理" : activeTab === "knowledge" ? "ナレッジ投入" : "デザイン編集"}
+              {getTitle()}
             </h1>
             <p className="text-xs lg:text-sm text-gray-500 hidden sm:block">
-              {activeTab === "chats"
-                ? "チャットAIの登録・編集・削除を行います"
-                : activeTab === "knowledge"
-                  ? "選択したチャットにナレッジを追加します"
-                  : "チャットUIの外観をカスタマイズします"}
+              {getDescription()}
             </p>
           </div>
         </div>
