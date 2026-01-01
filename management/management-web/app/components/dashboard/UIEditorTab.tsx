@@ -103,9 +103,20 @@ export function UIEditorTab({
     setLoading(true);
     try {
       const settings = await fetchUISettings(activeChatId);
-      setColors({ ...DEFAULT_COLORS, ...settings.theme_settings.colors });
+      const loadedColors = { ...DEFAULT_COLORS, ...settings.theme_settings.colors };
+      setColors(loadedColors);
       setLabels({ ...DEFAULT_LABELS, ...settings.theme_settings.labels });
       setWidgetSettings(settings.widget_settings || {});
+      
+      // 読み込んだ色をバリデーション
+      const errors: Partial<Record<keyof ThemeColors, string>> = {};
+      (Object.keys(loadedColors) as (keyof ThemeColors)[]).forEach((key) => {
+        const error = validateColor(loadedColors[key]);
+        if (error) {
+          errors[key] = error;
+        }
+      });
+      setColorErrors(errors);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -283,7 +294,7 @@ export function UIEditorTab({
                     </div>
                   </div>
                   {colorErrors[key] && (
-                    <p className="text-xs text-red-600 flex items-center gap-1 ml-13">
+                    <p className="text-xs text-red-600 flex items-center gap-1 ml-12">
                       <AlertCircle className="w-3 h-3" />
                       {colorErrors[key]}
                     </p>
