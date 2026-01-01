@@ -1086,8 +1086,22 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
 
 // --- UI Settings helpers ---
 
-async function fetchUISettings(ctx: Context<{ Bindings: Bindings; Variables: Variables }>, chatId: string): Promise<ChatUISettings | null> {
-  const row = await ctx.env.DB.prepare(
+function getDefaultThemeSettings(): ThemeSettings {
+  return {
+    colors: DEFAULT_COLORS,
+    labels: DEFAULT_LABELS
+  }
+}
+
+function getDefaultWidgetSettings(): WidgetSettings {
+  return {
+    button: DEFAULT_WIDGET_BUTTON,
+    window: DEFAULT_WIDGET_WINDOW
+  }
+}
+
+async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
+  const row = await c.env.DB.prepare(
     `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
      FROM chat_ui_settings
      WHERE chat_id = ?`
@@ -1097,11 +1111,31 @@ async function fetchUISettings(ctx: Context<{ Bindings: Bindings; Variables: Var
 
   if (!row) return null
 
+  // Parse theme_settings with proper error handling
+  const parsedTheme = safeParseJSON(row.theme_settings || '{}')
+  if (!parsedTheme) {
+    console.error(`Failed to parse theme_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const theme_settings = (parsedTheme && Object.keys(parsedTheme).length > 0) 
+    ? parsedTheme 
+    : getDefaultThemeSettings()
+
+  // Parse widget_settings with proper error handling
+  const parsedWidget = safeParseJSON(row.widget_settings || '{}')
+  if (!parsedWidget) {
+    console.error(`Failed to parse widget_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const widget_settings = (parsedWidget && Object.keys(parsedWidget).length > 0) 
+    ? parsedWidget 
+    : getDefaultWidgetSettings()
+
   return {
     id: row.id as string,
     chat_id: row.chat_id as string,
-    theme_settings: safeParseJSON(row.theme_settings || '{}') || {},
-    widget_settings: safeParseJSON(row.widget_settings || '{}') || {},
+    theme_settings,
+    widget_settings,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string
   }
@@ -1111,14 +1145,8 @@ function getDefaultUISettings(chatId: string): ChatUISettings {
   return {
     id: '',
     chat_id: chatId,
-    theme_settings: {
-      colors: DEFAULT_COLORS,
-      labels: DEFAULT_LABELS
-    },
-    widget_settings: {
-      button: DEFAULT_WIDGET_BUTTON,
-      window: DEFAULT_WIDGET_WINDOW
-    },
+    theme_settings: getDefaultThemeSettings(),
+    widget_settings: getDefaultWidgetSettings(),
     created_at: '',
     updated_at: ''
   }
