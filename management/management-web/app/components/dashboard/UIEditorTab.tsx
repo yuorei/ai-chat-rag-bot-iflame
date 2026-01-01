@@ -3,11 +3,11 @@ import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp } from "lu
 import { fetchUISettings, updateUISettings } from "../../lib/api";
 import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels } from "../../lib/types";
 
-// プレビュー用のiframeベースURL（環境変数または固定値）
+// プレビュー用のiframeベースURL（環境変数から取得）
 const PREVIEW_BASE_URL = typeof window !== 'undefined'
   ? (window as unknown as { __PREVIEW_IFRAME_URL__?: string }).__PREVIEW_IFRAME_URL__
     || import.meta.env.VITE_PREVIEW_IFRAME_URL
-    || "https://ai-chat-iframe-front.yuorei71.workers.dev"
+    || ""
   : "";
 
 type UIEditorTabProps = {
