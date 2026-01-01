@@ -121,6 +121,17 @@ async function isOriginAllowed(db: D1Database, origin: string): Promise<boolean>
 const PUBLIC_PATHS = ['/', '/health']
 
 // ---------------------------------------------------------------------------
+// Common CORS configuration
+// ---------------------------------------------------------------------------
+const CORS_CONFIG = {
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposeHeaders: ['Content-Length'],
+  maxAge: 86400,
+  credentials: true,
+}
+
+// ---------------------------------------------------------------------------
 // CORS Middleware - Only allow registered domains
 // ---------------------------------------------------------------------------
 app.use('*', async (c, next) => {
@@ -148,24 +159,16 @@ app.use('*', async (c, next) => {
     }
 
     const corsMiddleware = cors({
+      ...CORS_CONFIG,
       origin: origin,
-      allowMethods: ['GET', 'POST', 'OPTIONS'],
-      allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-      exposeHeaders: ['Content-Length'],
-      maxAge: 86400,
-      credentials: true,
     })
     return corsMiddleware(c, next)
   }
 
   // Static list of allowed origins
   const corsMiddleware = cors({
+    ...CORS_CONFIG,
     origin: allowedOrigins.split(','),
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposeHeaders: ['Content-Length'],
-    maxAge: 86400,
-    credentials: true,
   })
   return corsMiddleware(c, next)
 })
