@@ -9,6 +9,7 @@ import { Header } from "../components/dashboard/Header";
 import { NotificationBanner } from "../components/dashboard/NotificationBanner";
 import { ChatsTab, type ChatFormData } from "../components/dashboard/ChatsTab";
 import { KnowledgeTab } from "../components/dashboard/KnowledgeTab";
+import { UIEditorTab } from "../components/dashboard/UIEditorTab";
 
 export function meta() {
   return [
@@ -29,7 +30,7 @@ export default function Dashboard() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chats" | "knowledge">("chats");
+  const [activeTab, setActiveTab] = useState<"chats" | "knowledge" | "ui-editor">("chats");
   const emptyChatForm: ChatFormData = { id: "", targets: [""], display_name: "", system_prompt: "" };
   const [chatForm, setChatForm] = useState<ChatFormData>(emptyChatForm);
   const [fileForm, setFileForm] = useState<{ title: string; file: File | null }>({
@@ -371,7 +372,7 @@ export default function Dashboard() {
         />
 
         <div className="p-4 lg:p-8">
-          {activeTab === "chats" ? (
+          {activeTab === "chats" && (
             <ChatsTab
               chats={chats}
               loadingChats={loadingChats}
@@ -386,7 +387,8 @@ export default function Dashboard() {
               cancelEdit={cancelEdit}
               deleteChat={deleteChat}
             />
-          ) : (
+          )}
+          {activeTab === "knowledge" && (
             <KnowledgeTab
               activeChat={activeChat}
               knowledge={knowledge}
@@ -406,6 +408,15 @@ export default function Dashboard() {
               submittingURL={submittingURL}
               submittingText={submittingText}
               deleteKnowledge={deleteKnowledge}
+            />
+          )}
+          {activeTab === "ui-editor" && (
+            <UIEditorTab
+              chats={chats}
+              activeChatId={activeChatId}
+              setActiveChatId={setActiveChatId}
+              setStatus={setStatus}
+              setError={setError}
             />
           )}
         </div>

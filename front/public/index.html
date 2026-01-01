@@ -324,6 +324,32 @@
         .loading.show {
             display: block;
         }
+
+        .settings-warning {
+            display: none;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px 20px;
+            margin: 0;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        [data-theme="dark"] .settings-warning {
+            background: #3d3a20;
+            border-color: #9a8a30;
+            color: #d4c880;
+        }
+
+        .settings-warning.show {
+            display: block;
+        }
+
+        .settings-warning-icon {
+            margin-right: 6px;
+        }
     </style>
 </head>
 
@@ -333,7 +359,10 @@
             AIが回答します。質問してください。
         </div>
 
-
+        <div class="settings-warning" id="settingsWarning">
+            <span class="settings-warning-icon">⚠️</span>
+            <span>UI設定の読み込みに失敗しました。デフォルト設定を使用しています。</span>
+        </div>
 
         <div class="chat-messages" id="chatMessages">
             <div class="message bot-message">
@@ -503,6 +532,93 @@
             setTheme(themeParam);
         }
 
+        // UI設定を適用する関数
+        function applyThemeSettings(settings) {
+            if (!settings) return;
+            const root = document.documentElement;
+            const colors = settings.colors || {};
+            const labels = settings.labels || {};
+
+            // カラー設定を適用
+            if (colors.headerBackground) root.style.setProperty('--bg-header', colors.headerBackground);
+            if (colors.headerText) root.style.setProperty('--text-header', colors.headerText);
+            if (colors.bodyBackground) root.style.setProperty('--bg-body', colors.bodyBackground);
+            if (colors.containerBackground) root.style.setProperty('--bg-container', colors.containerBackground);
+            if (colors.messagesBackground) root.style.setProperty('--bg-messages', colors.messagesBackground);
+            if (colors.botMessageBackground) root.style.setProperty('--bg-message-bot', colors.botMessageBackground);
+            if (colors.botMessageText) root.style.setProperty('--text-message-bot', colors.botMessageText);
+            if (colors.botMessageBorder) root.style.setProperty('--border-message-bot', colors.botMessageBorder);
+            if (colors.userMessageBackground) root.style.setProperty('--bg-message-user', colors.userMessageBackground);
+            if (colors.userMessageGradientEnd) root.style.setProperty('--bg-message-user-end', colors.userMessageGradientEnd);
+            if (colors.userMessageText) root.style.setProperty('--text-message-user', colors.userMessageText);
+            if (colors.inputAreaBackground) root.style.setProperty('--bg-input-area', colors.inputAreaBackground);
+            if (colors.inputBackground) root.style.setProperty('--bg-input', colors.inputBackground);
+            if (colors.inputText) root.style.setProperty('--text-input', colors.inputText);
+            if (colors.inputBorder) root.style.setProperty('--border-input', colors.inputBorder);
+            if (colors.inputBorderFocus) root.style.setProperty('--border-input-focus', colors.inputBorderFocus);
+            if (colors.accentColor) {
+                root.style.setProperty('--accent', colors.accentColor);
+            }
+            if (colors.accentHover) {
+                root.style.setProperty('--accent-hover', colors.accentHover);
+            }
+
+            // ラベル設定を適用
+            if (labels.headerTitle) {
+                const headerEl = document.querySelector('.chat-header');
+                if (headerEl) headerEl.textContent = labels.headerTitle;
+            }
+            if (labels.inputPlaceholder) {
+                const inputEl = document.getElementById('messageInput');
+                if (inputEl) inputEl.placeholder = labels.inputPlaceholder;
+            }
+            if (labels.welcomeMessage) {
+                const firstBotMessage = document.querySelector('.bot-message .message-content');
+                if (firstBotMessage) firstBotMessage.textContent = labels.welcomeMessage;
+            }
+
+            console.log('[chat] Applied UI settings');
+        }
+
+        // UI設定読み込み失敗の警告を表示
+        function showSettingsWarning(show = true) {
+            const warningEl = document.getElementById('settingsWarning');
+            if (warningEl) {
+                if (show) {
+                    warningEl.classList.add('show');
+                } else {
+                    warningEl.classList.remove('show');
+                }
+            }
+        }
+
+        // UI設定を読み込む
+        async function loadUISettings() {
+            if (!CHAT_ID) return;
+            const isPreview = urlParams.get('preview') === 'true';
+            if (isPreview) {
+                console.log('[chat] Preview mode - waiting for postMessage settings');
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/ui-settings?chatId=${CHAT_ID}`);
+                if (!response.ok) {
+                    console.warn('[chat] Failed to load UI settings:', response.status);
+                    showSettingsWarning(true);
+                    return;
+                }
+                const { theme } = await response.json();
+                applyThemeSettings(theme);
+                showSettingsWarning(false); // 成功したら警告を非表示
+            } catch (error) {
+                console.warn('[chat] Failed to load UI settings:', error);
+                showSettingsWarning(true);
+            }
+        }
+
+        // UI設定を読み込み
+        loadUISettings();
+
         // iframe対応のためのpostMessageリスナー
         window.addEventListener('message', function (event) {
             if (event.data.type === 'sendMessage') {
@@ -522,6 +638,11 @@
             // 親ページからのテーマ情報を受信
             if (event.data.type === 'setTheme') {
                 setTheme(event.data.theme);
+            }
+            // 管理画面からのプレビュー用UI設定を受信
+            if (event.data.type === 'uiSettingsPreview') {
+                applyThemeSettings(event.data.settings);
+                showSettingsWarning(false); // プレビュー設定が適用されたら警告を非表示
             }
         });
     </script>

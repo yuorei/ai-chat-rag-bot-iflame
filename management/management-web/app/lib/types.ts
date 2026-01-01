@@ -1,3 +1,18 @@
+// Re-export UI-related types from shared module
+export type {
+  ThemeColors,
+  ThemeLabels,
+  WidgetButton,
+  WidgetWindow,
+  PartialThemeColors,
+  PartialThemeLabels,
+  PartialWidgetButton,
+  PartialWidgetWindow,
+  ThemeSettings,
+  WidgetSettings,
+  ChatUISettings,
+} from '../../../../shared/constants/ui-defaults';
+
 export type ChatProfile = {
   id: string;
   target: string;

@@ -1,6 +1,15 @@
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
+import {
+  DEFAULT_COLORS,
+  DEFAULT_LABELS,
+  DEFAULT_WIDGET_BUTTON,
+  DEFAULT_WIDGET_WINDOW,
+  ThemeSettings,
+  WidgetSettings,
+  ChatUISettings,
+} from '../../../shared/constants/ui-defaults'
 
 type D1Result<T = unknown> = {
   results?: T[]
@@ -82,6 +91,8 @@ type KnowledgeAsset = {
   created_at: string
   updated_at: string
 }
+
+// ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -308,6 +319,58 @@ app.delete('/api/chats/:id', async (c) => {
       return jsonError(c, 404, 'chat not found')
     }
     return c.json({ deleted: true })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// UI Settings endpoints
+app.get('/api/chats/:id/ui-settings', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = sanitizeAlias(c.req.param('id'))
+
+  try {
+    // 所有者チェック
+    const chat = await fetchChatIfOwned(c, id, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const settings = await fetchUISettings(c, id)
+    return c.json(settings || getDefaultUISettings(id))
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.put('/api/chats/:id/ui-settings', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = sanitizeAlias(c.req.param('id'))
+
+  const payload = await readJson<{
+    theme_settings?: ThemeSettings
+    widget_settings?: WidgetSettings
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  try {
+    // 所有者チェック
+    const chat = await fetchChatIfOwned(c, id, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    await upsertUISettings(c, id, payload.theme_settings || {}, payload.widget_settings || {})
+    const settings = await fetchUISettings(c, id)
+    return c.json(settings)
   } catch (err) {
     console.error(err)
     return serverError(c)
@@ -970,4 +1033,101 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
     if (v instanceof File && v.name) return v
   }
   return null
+}
+
+// --- UI Settings helpers ---
+
+function getDefaultThemeSettings(): ThemeSettings {
+  return {
+    colors: DEFAULT_COLORS,
+    labels: DEFAULT_LABELS
+  }
+}
+
+function getDefaultWidgetSettings(): WidgetSettings {
+  return {
+    button: DEFAULT_WIDGET_BUTTON,
+    window: DEFAULT_WIDGET_WINDOW
+  }
+}
+
+async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
+     FROM chat_ui_settings
+     WHERE chat_id = ?`
+  )
+    .bind(chatId)
+    .first<any>()
+
+  if (!row) return null
+
+  // Parse theme_settings with proper error handling
+  const parsedTheme = safeParseJSON(row.theme_settings || '{}')
+  if (!parsedTheme) {
+    console.error(`Failed to parse theme_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const theme_settings = (parsedTheme && Object.keys(parsedTheme).length > 0) 
+    ? parsedTheme 
+    : getDefaultThemeSettings()
+
+  // Parse widget_settings with proper error handling
+  const parsedWidget = safeParseJSON(row.widget_settings || '{}')
+  if (!parsedWidget) {
+    console.error(`Failed to parse widget_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const widget_settings = (parsedWidget && Object.keys(parsedWidget).length > 0) 
+    ? parsedWidget 
+    : getDefaultWidgetSettings()
+
+  return {
+    id: row.id as string,
+    chat_id: row.chat_id as string,
+    theme_settings,
+    widget_settings,
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string
+  }
+}
+
+function getDefaultUISettings(chatId: string): ChatUISettings {
+  return {
+    id: '',
+    chat_id: chatId,
+    theme_settings: getDefaultThemeSettings(),
+    widget_settings: getDefaultWidgetSettings(),
+    created_at: '',
+    updated_at: ''
+  }
+}
+
+async function upsertUISettings(
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
+  chatId: string,
+  themeSettings: ThemeSettings,
+  widgetSettings: WidgetSettings
+): Promise<void> {
+  const existing = await fetchUISettings(ctx, chatId)
+  const themeJson = JSON.stringify(themeSettings)
+  const widgetJson = JSON.stringify(widgetSettings)
+
+  if (existing) {
+    await ctx.env.DB.prepare(
+      `UPDATE chat_ui_settings
+       SET theme_settings = ?, widget_settings = ?, updated_at = datetime('now')
+       WHERE chat_id = ?`
+    )
+      .bind(themeJson, widgetJson, chatId)
+      .run()
+  } else {
+    const id = crypto.randomUUID()
+    await ctx.env.DB.prepare(
+      `INSERT INTO chat_ui_settings (id, chat_id, theme_settings, widget_settings, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+      .bind(id, chatId, themeJson, widgetJson)
+      .run()
+  }
 }

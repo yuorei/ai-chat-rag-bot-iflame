@@ -1,5 +1,11 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { 
+  DEFAULT_COLORS, 
+  DEFAULT_LABELS, 
+  DEFAULT_WIDGET_BUTTON, 
+  DEFAULT_WIDGET_WINDOW 
+} from '../../shared/constants/ui-defaults'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,8 +64,31 @@ function normalizeTarget(target: string): string {
 // ---------------------------------------------------------------------------
 app.use('*', cors({
   origin: (origin, c) => {
-    const allowedOrigins = c.env.ALLOWED_ORIGINS.split(',')
-    return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
+    // If no origin (e.g., server-to-server requests), allow
+    if (!origin) return '*'
+
+    const allowedOrigins = c.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return origin
+    }
+
+    // Check for wildcard patterns (e.g., *.example.com)
+    for (const allowed of allowedOrigins) {
+      if (allowed === '*') {
+        return origin
+      }
+      if (allowed.startsWith('*.')) {
+        const suffix = allowed.slice(1) // Remove the *
+        if (origin.endsWith(suffix) || origin === `https://${allowed.slice(2)}` || origin === `http://${allowed.slice(2)}`) {
+          return origin
+        }
+      }
+    }
+
+    // Not allowed - return null to block
+    return null
   },
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -294,6 +323,76 @@ app.get('/profile/:chatId', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /ui-settings - Get UI settings for a chat (public endpoint for iframe)
+// Query params: chatId or target
+// ---------------------------------------------------------------------------
+app.get('/ui-settings', async (c) => {
+  const chatId = c.req.query('chatId')
+  const target = c.req.query('target') || c.req.header('Origin') || c.req.header('Referer')
+
+  let resolvedChatId = chatId
+
+  // Resolve chatId from target if not provided
+  if (!resolvedChatId && target) {
+    const profile = await resolveChatProfile(c.env.DB, target)
+    if (profile) {
+      resolvedChatId = profile.id
+    }
+  }
+
+  if (!resolvedChatId) {
+    return c.json({ error: 'chatId or target is required' }, 400)
+  }
+
+  try {
+    const settings = await c.env.DB
+      .prepare('SELECT theme_settings, widget_settings FROM chat_ui_settings WHERE chat_id = ?')
+      .bind(resolvedChatId)
+      .first<{ theme_settings: string; widget_settings: string }>()
+
+    if (!settings) {
+      // Return default settings if none configured
+      return c.json({
+        theme: {
+          colors: DEFAULT_COLORS,
+          labels: DEFAULT_LABELS
+        },
+        widget: {
+          button: DEFAULT_WIDGET_BUTTON,
+          window: DEFAULT_WIDGET_WINDOW
+        }
+      })
+    }
+
+    return c.json({
+      theme: safeParseJSON(settings.theme_settings) || {
+        colors: DEFAULT_COLORS,
+        labels: DEFAULT_LABELS
+      },
+      widget: safeParseJSON(settings.widget_settings) || {
+        button: DEFAULT_WIDGET_BUTTON,
+        window: DEFAULT_WIDGET_WINDOW
+      }
+    })
+  } catch (error) {
+    console.error('Error in /ui-settings:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Helper: Safe JSON parse
+// ---------------------------------------------------------------------------
+function safeParseJSON(text: string | null | undefined): unknown {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
 app.get('/', (c) => {
@@ -305,6 +404,7 @@ app.get('/', (c) => {
       init: 'GET /init?target=<domain> or POST /init',
       chat: 'POST /chat',
       profile: 'GET /profile/:chatId',
+      uiSettings: 'GET /ui-settings?chatId=<id> or ?target=<domain>',
     },
   })
 })
