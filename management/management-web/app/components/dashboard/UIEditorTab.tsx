@@ -150,8 +150,6 @@ export function UIEditorTab({
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const activeChat = chats.find((c) => c.id === activeChatId);
-
   if (!activeChatId) {
     return (
       <div className="text-center py-12">
