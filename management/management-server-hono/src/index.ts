@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
 
@@ -1080,8 +1080,8 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
 
 // --- UI Settings helpers ---
 
-async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
-  const row = await c.env.DB.prepare(
+async function fetchUISettings(ctx: Context<{ Bindings: Bindings; Variables: Variables }>, chatId: string): Promise<ChatUISettings | null> {
+  const row = await ctx.env.DB.prepare(
     `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
      FROM chat_ui_settings
      WHERE chat_id = ?`
@@ -1154,17 +1154,17 @@ function getDefaultUISettings(chatId: string): ChatUISettings {
 }
 
 async function upsertUISettings(
-  c: any,
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   chatId: string,
   themeSettings: ThemeSettings,
   widgetSettings: WidgetSettings
 ): Promise<void> {
-  const existing = await fetchUISettings(c, chatId)
+  const existing = await fetchUISettings(ctx, chatId)
   const themeJson = JSON.stringify(themeSettings)
   const widgetJson = JSON.stringify(widgetSettings)
 
   if (existing) {
-    await c.env.DB.prepare(
+    await ctx.env.DB.prepare(
       `UPDATE chat_ui_settings
        SET theme_settings = ?, widget_settings = ?, updated_at = datetime('now')
        WHERE chat_id = ?`
@@ -1173,7 +1173,7 @@ async function upsertUISettings(
       .run()
   } else {
     const id = crypto.randomUUID()
-    await c.env.DB.prepare(
+    await ctx.env.DB.prepare(
       `INSERT INTO chat_ui_settings (id, chat_id, theme_settings, widget_settings, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
     )
