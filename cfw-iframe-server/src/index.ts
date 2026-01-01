@@ -38,22 +38,6 @@ interface ChatTarget {
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // ---------------------------------------------------------------------------
-// CORS Middleware
-// ---------------------------------------------------------------------------
-app.use('*', async (c, next) => {
-  const allowedOrigins = c.env.ALLOWED_ORIGINS
-  const corsMiddleware = cors({
-    origin: allowedOrigins === '*' ? '*' : allowedOrigins.split(','),
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposeHeaders: ['Content-Length'],
-    maxAge: 86400,
-    credentials: true,
-  })
-  return corsMiddleware(c, next)
-})
-
-// ---------------------------------------------------------------------------
 // Helper: Normalize target (domain)
 // ---------------------------------------------------------------------------
 function normalizeTarget(target: string): string {
@@ -68,6 +52,87 @@ function normalizeTarget(target: string): string {
   normalized = normalized.replace(/^www\./, '')
   return normalized
 }
+
+// ---------------------------------------------------------------------------
+// Helper: Check if origin is registered in database
+// ---------------------------------------------------------------------------
+async function isOriginAllowed(db: D1Database, origin: string): Promise<boolean> {
+  if (!origin) return false
+
+  const normalized = normalizeTarget(origin)
+  if (!normalized) return false
+
+  // Check chat_targets table
+  const targetRow = await db
+    .prepare('SELECT 1 FROM chat_targets WHERE target = ? LIMIT 1')
+    .bind(normalized)
+    .first()
+  if (targetRow) return true
+
+  // Check chat_profiles.target directly
+  const profileRow = await db
+    .prepare('SELECT 1 FROM chat_profiles WHERE target = ? AND target_type = ? LIMIT 1')
+    .bind(normalized, 'web')
+    .first()
+  if (profileRow) return true
+
+  return false
+}
+
+// ---------------------------------------------------------------------------
+// Paths that don't require Origin header (health checks, etc.)
+// ---------------------------------------------------------------------------
+const PUBLIC_PATHS = ['/', '/health']
+
+// ---------------------------------------------------------------------------
+// CORS Middleware - Only allow registered domains
+// ---------------------------------------------------------------------------
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin') || ''
+  const allowedOrigins = c.env.ALLOWED_ORIGINS
+  const path = new URL(c.req.url).pathname
+
+  // If ALLOWED_ORIGINS is '*', check database for registered domains
+  if (allowedOrigins === '*') {
+    // Allow public paths without Origin (for health checks, monitoring)
+    if (!origin && PUBLIC_PATHS.includes(path)) {
+      return next()
+    }
+
+    // Block requests without Origin header (curl, etc.)
+    if (!origin) {
+      return c.json({ error: 'Origin header is required' }, 403)
+    }
+
+    const isAllowed = await isOriginAllowed(c.env.DB, origin)
+
+    // Block unregistered origins
+    if (!isAllowed) {
+      return c.json({ error: 'Origin not allowed' }, 403)
+    }
+
+    const corsMiddleware = cors({
+      origin: origin,
+      allowMethods: ['GET', 'POST', 'OPTIONS'],
+      allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      exposeHeaders: ['Content-Length'],
+      maxAge: 86400,
+      credentials: true,
+    })
+    return corsMiddleware(c, next)
+  }
+
+  // Static list of allowed origins
+  const corsMiddleware = cors({
+    origin: allowedOrigins.split(','),
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposeHeaders: ['Content-Length'],
+    maxAge: 86400,
+    credentials: true,
+  })
+  return corsMiddleware(c, next)
+})
 
 // ---------------------------------------------------------------------------
 // Helper: Resolve chat profile by target/domain
