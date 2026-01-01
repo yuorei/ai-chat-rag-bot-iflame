@@ -27,6 +27,8 @@ import {
   ExternalLink,
   Bot,
   Menu,
+  Search,
+  ArrowUpDown,
 } from "lucide-react";
 
 export function meta() {
@@ -58,6 +60,9 @@ export default function Dashboard() {
   });
   const [urlForm, setUrlForm] = useState({ url: "", title: "" });
   const [textForm, setTextForm] = useState({ title: "", content: "" });
+  const [submittingFile, setSubmittingFile] = useState(false);
+  const [submittingURL, setSubmittingURL] = useState(false);
+  const [submittingText, setSubmittingText] = useState(false);
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
   useEffect(() => {
@@ -185,6 +190,7 @@ export default function Dashboard() {
       setError("ファイルを選択してください");
       return;
     }
+    setSubmittingFile(true);
     const formData = new FormData();
     formData.append("chat_id", activeChatId);
     formData.append("title", fileForm.title);
@@ -215,6 +221,8 @@ export default function Dashboard() {
       } else {
         setError((err as Error).message);
       }
+    } finally {
+      setSubmittingFile(false);
     }
   };
 
@@ -226,6 +234,7 @@ export default function Dashboard() {
       setError("先に操作するチャットを選択してください");
       return;
     }
+    setSubmittingURL(true);
     try {
       await apiFetch("/api/knowledge/urls", {
         method: "POST",
@@ -240,6 +249,8 @@ export default function Dashboard() {
       } else {
         setError((err as Error).message);
       }
+    } finally {
+      setSubmittingURL(false);
     }
   };
 
@@ -251,6 +262,7 @@ export default function Dashboard() {
       setError("先に操作するチャットを選択してください");
       return;
     }
+    setSubmittingText(true);
     try {
       await apiFetch("/api/knowledge/texts", {
         method: "POST",
@@ -258,6 +270,25 @@ export default function Dashboard() {
       });
       setStatus("テキストを登録しました");
       setTextForm({ title: "", content: "" });
+      loadKnowledge();
+    } catch (err) {
+      if (err instanceof AuthError) {
+        nav("/login");
+      } else {
+        setError((err as Error).message);
+      }
+    } finally {
+      setSubmittingText(false);
+    }
+  };
+
+  const deleteKnowledge = async (id: string) => {
+    if (!window.confirm("このナレッジを削除しますか？")) return;
+    setStatus(null);
+    setError(null);
+    try {
+      await apiFetch(`/api/knowledge/${id}`, { method: "DELETE" });
+      setStatus("ナレッジを削除しました");
       loadKnowledge();
     } catch (err) {
       if (err instanceof AuthError) {
@@ -518,6 +549,10 @@ export default function Dashboard() {
               submitURL={submitURL}
               submitText={submitText}
               activeChatId={activeChatId}
+              submittingFile={submittingFile}
+              submittingURL={submittingURL}
+              submittingText={submittingText}
+              deleteKnowledge={deleteKnowledge}
             />
           )}
         </div>
@@ -555,6 +590,65 @@ function ChatsTab({
   cancelEdit: () => void;
   deleteChat: (id: string) => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "id" | "created">("name");
+
+  // バリデーション
+  const MAX_SYSTEM_PROMPT_LENGTH = 2000;
+
+  const validateChatId = (id: string): string | null => {
+    if (!id) return null;
+    if (!/^[a-zA-Z0-9-_]+$/.test(id)) {
+      return "英数字、ハイフン、アンダースコアのみ使用可能です";
+    }
+    if (id.length < 3) {
+      return "3文字以上で入力してください";
+    }
+    if (id.length > 50) {
+      return "50文字以内で入力してください";
+    }
+    return null;
+  };
+
+  const validateDomain = (domain: string): string | null => {
+    if (!domain) return null;
+    // シンプルなドメイン形式チェック
+    const domainRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
+    if (!domainRegex.test(domain)) {
+      return "有効なドメイン形式で入力してください（例: example.com）";
+    }
+    return null;
+  };
+
+  const chatIdError = validateChatId(chatForm.id);
+  const domainErrors = chatForm.targets.map(validateDomain);
+  const hasValidationErrors = (chatIdError && chatForm.id) || domainErrors.some((e, i) => e && chatForm.targets[i]);
+
+  // フィルタリングとソート
+  const filteredAndSortedChats = chats
+    .filter((c) => {
+      if (!searchQuery.trim()) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        c.id.toLowerCase().includes(query) ||
+        (c.display_name || "").toLowerCase().includes(query) ||
+        (c.system_prompt || "").toLowerCase().includes(query) ||
+        (c.targets || [c.target]).some((t) => t.toLowerCase().includes(query))
+      );
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "name":
+          return (a.display_name || a.id).localeCompare(b.display_name || b.id);
+        case "id":
+          return a.id.localeCompare(b.id);
+        case "created":
+          return (b.created_at || "").localeCompare(a.created_at || "");
+        default:
+          return 0;
+      }
+    });
+
   return (
     <div className="space-y-8">
       {/* 新規登録・編集フォーム */}
@@ -584,13 +678,29 @@ function ChatsTab({
                 チャットID（エイリアス）
               </label>
               <input
-                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                className={`w-full px-4 py-3 rounded-xl border text-sm focus:ring-2 focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+                  chatIdError && chatForm.id
+                    ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/20"
+                    : "border-gray-200 bg-gray-50 focus:border-blue-500 focus:ring-blue-500/20 focus:bg-white"
+                }`}
                 value={chatForm.id}
                 onChange={(e) => setChatForm((p) => ({ ...p, id: e.target.value }))}
                 disabled={Boolean(editingChatId)}
                 placeholder="my-chat-bot"
                 required
               />
+              {chatIdError && chatForm.id && (
+                <p className="text-xs text-red-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  {chatIdError}
+                </p>
+              )}
+              {!chatIdError && chatForm.id && (
+                <p className="text-xs text-emerald-600 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3" />
+                  有効なIDです
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
@@ -611,36 +721,50 @@ function ChatsTab({
             </label>
             <div className="space-y-3">
               {chatForm.targets.map((t, idx) => (
-                <div key={idx} className="flex items-center gap-3">
-                  <div className="flex-1 relative">
-                    <Globe className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:outline-none transition-all"
-                      value={t}
-                      onChange={(e) =>
-                        setChatForm((p) => {
-                          const next = [...p.targets];
-                          next[idx] = e.target.value;
-                          return { ...p, targets: next };
-                        })
-                      }
-                      placeholder="example.com"
-                      required
-                    />
+                <div key={idx} className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 relative">
+                      <Globe className={`absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                        domainErrors[idx] && t ? "text-red-400" : "text-gray-400"
+                      }`} />
+                      <input
+                        className={`w-full pl-11 pr-4 py-3 rounded-xl border text-sm focus:ring-2 focus:outline-none transition-all ${
+                          domainErrors[idx] && t
+                            ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/20"
+                            : "border-gray-200 bg-gray-50 focus:border-blue-500 focus:ring-blue-500/20 focus:bg-white"
+                        }`}
+                        value={t}
+                        onChange={(e) =>
+                          setChatForm((p) => {
+                            const next = [...p.targets];
+                            next[idx] = e.target.value;
+                            return { ...p, targets: next };
+                          })
+                        }
+                        placeholder="example.com"
+                        required
+                      />
+                    </div>
+                    {chatForm.targets.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setChatForm((p) => ({
+                            ...p,
+                            targets: p.targets.filter((_, i) => i !== idx),
+                          }))
+                        }
+                        className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    )}
                   </div>
-                  {chatForm.targets.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setChatForm((p) => ({
-                          ...p,
-                          targets: p.targets.filter((_, i) => i !== idx),
-                        }))
-                      }
-                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <X className="w-5 h-5" />
-                    </button>
+                  {domainErrors[idx] && t && (
+                    <p className="text-xs text-red-600 flex items-center gap-1 pl-1">
+                      <AlertCircle className="w-3 h-3" />
+                      {domainErrors[idx]}
+                    </p>
                   )}
                 </div>
               ))}
@@ -656,22 +780,44 @@ function ChatsTab({
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-gray-700">
-              システムプロンプト
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">
+                システムプロンプト
+              </label>
+              <span className={`text-xs ${
+                chatForm.system_prompt.length > MAX_SYSTEM_PROMPT_LENGTH
+                  ? "text-red-600 font-medium"
+                  : chatForm.system_prompt.length > MAX_SYSTEM_PROMPT_LENGTH * 0.9
+                    ? "text-amber-600"
+                    : "text-gray-400"
+              }`}>
+                {chatForm.system_prompt.length.toLocaleString()} / {MAX_SYSTEM_PROMPT_LENGTH.toLocaleString()}
+              </span>
+            </div>
             <textarea
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:bg-white focus:outline-none transition-all resize-none"
+              className={`w-full px-4 py-3 rounded-xl border text-sm focus:ring-2 focus:outline-none transition-all resize-none ${
+                chatForm.system_prompt.length > MAX_SYSTEM_PROMPT_LENGTH
+                  ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/20"
+                  : "border-gray-200 bg-gray-50 focus:border-blue-500 focus:ring-blue-500/20 focus:bg-white"
+              }`}
               rows={4}
               value={chatForm.system_prompt}
               onChange={(e) => setChatForm((p) => ({ ...p, system_prompt: e.target.value }))}
               placeholder="このチャット向けの回答方針を入力してください..."
             />
+            {chatForm.system_prompt.length > MAX_SYSTEM_PROMPT_LENGTH && (
+              <p className="text-xs text-red-600 flex items-center gap-1">
+                <AlertCircle className="w-3 h-3" />
+                文字数が上限を超えています
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
             <button
               type="submit"
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm"
+              disabled={Boolean(hasValidationErrors) || chatForm.system_prompt.length > MAX_SYSTEM_PROMPT_LENGTH}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all shadow-sm"
             >
               {editingChatId ? (
                 <>
@@ -700,24 +846,61 @@ function ChatsTab({
 
       {/* 登録済みチャット一覧 */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <MessageSquare className="w-5 h-5 text-gray-600" />
+        <div className="px-4 lg:px-6 py-4 border-b border-gray-200">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <MessageSquare className="w-5 h-5 text-gray-600" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base lg:text-lg font-semibold text-gray-900">登録済みチャット</h2>
+                <p className="text-xs lg:text-sm text-gray-500">
+                  {filteredAndSortedChats.length === chats.length
+                    ? `${chats.length}件登録`
+                    : `${filteredAndSortedChats.length}/${chats.length}件表示`}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-base lg:text-lg font-semibold text-gray-900">登録済みチャット</h2>
-              <p className="text-xs lg:text-sm text-gray-500">{chats.length}件登録</p>
+
+            {/* 検索・ソート・更新 */}
+            <div className="flex items-center gap-2 lg:gap-3">
+              {/* 検索ボックス */}
+              <div className="relative flex-1 lg:flex-none">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="検索..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full lg:w-48 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
+                />
+              </div>
+
+              {/* ソート */}
+              <div className="relative">
+                <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as "name" | "id" | "created")}
+                  className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none cursor-pointer appearance-none"
+                >
+                  <option value="name">名前順</option>
+                  <option value="id">ID順</option>
+                  <option value="created">作成日順</option>
+                </select>
+              </div>
+
+              {/* 更新ボタン */}
+              <button
+                onClick={loadChats}
+                disabled={loadingChats}
+                className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingChats ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">更新</span>
+              </button>
             </div>
           </div>
-          <button
-            onClick={loadChats}
-            disabled={loadingChats}
-            className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
-          >
-            <RefreshCw className={`w-4 h-4 ${loadingChats ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">更新</span>
-          </button>
         </div>
 
         <div className="p-4 lg:p-6">
@@ -742,18 +925,27 @@ function ChatsTab({
               <h3 className="text-lg font-medium text-gray-900 mb-2">チャットがありません</h3>
               <p className="text-sm text-gray-500">上のフォームから新しいチャットを登録してください</p>
             </div>
+          ) : filteredAndSortedChats.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">検索結果がありません</h3>
+              <p className="text-sm text-gray-500">別のキーワードで検索してください</p>
+            </div>
           ) : (
             <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {chats.map((c) => (
+              {filteredAndSortedChats.map((c) => (
                 <div
                   key={c.id}
-                  className={`rounded-xl border-2 p-4 transition-all ${
+                  className={`rounded-xl border-2 p-4 transition-all cursor-pointer ${
                     activeChatId === c.id
-                      ? "border-blue-500 bg-blue-50/50 shadow-md"
-                      : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm"
+                      ? "border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg ring-2 ring-blue-200"
+                      : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:scale-[1.01]"
                   }`}
+                  onClick={() => setActiveChatId(c.id)}
                 >
-                  <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="min-w-0">
                       <h3 className="font-semibold text-gray-900 truncate">
                         {c.display_name || c.id}
@@ -761,18 +953,29 @@ function ChatsTab({
                       <code className="text-xs text-gray-500 font-mono">{c.id}</code>
                     </div>
                     {activeChatId === c.id && (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs font-semibold rounded-full">
+                      <span className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-semibold rounded-full shadow-sm">
                         <Check className="w-3 h-3" />
                         選択中
                       </span>
                     )}
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 mb-4">
+                  {/* システムプロンプトプレビュー */}
+                  {c.system_prompt && (
+                    <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
+                      {c.system_prompt.slice(0, 100)}{c.system_prompt.length > 100 ? '...' : ''}
+                    </p>
+                  )}
+
+                  <div className="flex flex-wrap gap-1.5 mb-3">
                     {(c.targets && c.targets.length > 0 ? c.targets : [c.target]).map((t) => (
                       <span
                         key={t}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 text-xs font-medium rounded-full"
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
+                          activeChatId === c.id
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-gray-100 text-gray-700"
+                        }`}
                       >
                         <Globe className="w-3 h-3" />
                         {t}
@@ -780,27 +983,21 @@ function ChatsTab({
                     ))}
                   </div>
 
-                  <div className="flex items-center gap-2 pt-3 border-t border-gray-200">
+                  <div className="flex items-center gap-2 pt-3 border-t border-gray-200" onClick={(e) => e.stopPropagation()}>
                     <button
-                      onClick={() => setActiveChatId(c.id)}
-                      disabled={activeChatId === c.id}
-                      className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
+                      onClick={() => startEdit(c)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
                         activeChatId === c.id
-                          ? "bg-blue-600 text-white cursor-default"
+                          ? "bg-blue-600 text-white hover:bg-blue-700"
                           : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                       }`}
                     >
-                      {activeChatId === c.id ? "選択中" : "選択"}
-                    </button>
-                    <button
-                      onClick={() => startEdit(c)}
-                      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                    >
-                      <Edit2 className="w-4 h-4" />
+                      <Edit2 className="w-3.5 h-3.5" />
+                      編集
                     </button>
                     <button
                       onClick={() => deleteChat(c.id)}
-                      className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -831,6 +1028,10 @@ function KnowledgeTab({
   submitURL,
   submitText,
   activeChatId,
+  submittingFile,
+  submittingURL,
+  submittingText,
+  deleteKnowledge,
 }: {
   activeChat: ChatProfile | null;
   knowledge: KnowledgeAsset[];
@@ -846,7 +1047,46 @@ function KnowledgeTab({
   submitURL: (e: React.FormEvent) => void;
   submitText: (e: React.FormEvent) => void;
   activeChatId: string;
+  submittingFile: boolean;
+  submittingURL: boolean;
+  submittingText: boolean;
+  deleteKnowledge: (id: string) => void;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [knowledgeSearch, setKnowledgeSearch] = useState("");
+
+  // ドラッグ&ドロップハンドラ
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      setFileForm((p) => ({ ...p, file: files[0] }));
+    }
+  };
+
+  // ナレッジ検索フィルタ
+  const filteredKnowledge = knowledge.filter((k) => {
+    if (!knowledgeSearch.trim()) return true;
+    const query = knowledgeSearch.toLowerCase();
+    return (
+      (k.title || "").toLowerCase().includes(query) ||
+      (k.original_filename || "").toLowerCase().includes(query) ||
+      (k.source_url || "").toLowerCase().includes(query) ||
+      k.chat_id.toLowerCase().includes(query)
+    );
+  });
+
   if (!activeChatId) {
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
@@ -910,28 +1150,55 @@ function KnowledgeTab({
               placeholder="タイトル（任意）"
               value={fileForm.title}
               onChange={(e) => setFileForm((p) => ({ ...p, title: e.target.value }))}
+              disabled={submittingFile}
             />
-            <div className="relative">
+            <div
+              className="relative"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <input
                 type="file"
                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                 onChange={(e) => setFileForm((p) => ({ ...p, file: e.target.files?.[0] ?? null }))}
                 required
+                disabled={submittingFile}
               />
-              <div className="flex items-center gap-3 px-4 py-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-violet-300 hover:bg-violet-50/50 transition-all">
-                <Upload className="w-5 h-5 text-gray-400" />
-                <span className="text-sm text-gray-500 truncate">
-                  {fileForm.file ? fileForm.file.name : "ファイルを選択..."}
-                </span>
+              <div className={`flex flex-col items-center justify-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed transition-all ${
+                isDragging
+                  ? "border-violet-500 bg-violet-100"
+                  : fileForm.file
+                    ? "border-violet-300 bg-violet-50"
+                    : "border-gray-200 hover:border-violet-300 hover:bg-violet-50/50"
+              }`}>
+                <Upload className={`w-8 h-8 ${isDragging ? "text-violet-600" : "text-gray-400"}`} />
+                <div className="text-center">
+                  <span className="text-sm font-medium text-gray-700">
+                    {fileForm.file ? fileForm.file.name : "ドラッグ&ドロップ"}
+                  </span>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {fileForm.file ? `${(fileForm.file.size / 1024).toFixed(1)} KB` : "またはクリックして選択"}
+                  </p>
+                </div>
               </div>
             </div>
             <button
               type="submit"
-              disabled={!activeChatId}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white font-medium rounded-xl transition-all"
+              disabled={!activeChatId || submittingFile}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all"
             >
-              <Upload className="w-4 h-4" />
-              アップロード
+              {submittingFile ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  アップロード中...
+                </>
+              ) : (
+                <>
+                  <Upload className="w-4 h-4" />
+                  アップロード
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -958,6 +1225,7 @@ function KnowledgeTab({
                 value={urlForm.url}
                 onChange={(e) => setUrlForm((p) => ({ ...p, url: e.target.value }))}
                 required
+                disabled={submittingURL}
               />
             </div>
             <input
@@ -965,14 +1233,24 @@ function KnowledgeTab({
               placeholder="タイトル（任意）"
               value={urlForm.title}
               onChange={(e) => setUrlForm((p) => ({ ...p, title: e.target.value }))}
+              disabled={submittingURL}
             />
             <button
               type="submit"
-              disabled={!activeChatId}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium rounded-xl transition-all"
+              disabled={!activeChatId || submittingURL}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all"
             >
-              <LinkIcon className="w-4 h-4" />
-              取り込む
+              {submittingURL ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  取り込み中...
+                </>
+              ) : (
+                <>
+                  <LinkIcon className="w-4 h-4" />
+                  取り込む
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -996,6 +1274,7 @@ function KnowledgeTab({
               placeholder="タイトル（任意）"
               value={textForm.title}
               onChange={(e) => setTextForm((p) => ({ ...p, title: e.target.value }))}
+              disabled={submittingText}
             />
             <textarea
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 focus:bg-white focus:outline-none transition-all resize-none"
@@ -1004,14 +1283,24 @@ function KnowledgeTab({
               value={textForm.content}
               onChange={(e) => setTextForm((p) => ({ ...p, content: e.target.value }))}
               required
+              disabled={submittingText}
             />
             <button
               type="submit"
-              disabled={!activeChatId}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 text-white font-medium rounded-xl transition-all"
+              disabled={!activeChatId || submittingText}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-amber-600 hover:bg-amber-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all"
             >
-              <Type className="w-4 h-4" />
-              登録する
+              {submittingText ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  登録中...
+                </>
+              ) : (
+                <>
+                  <Type className="w-4 h-4" />
+                  登録する
+                </>
+              )}
             </button>
           </form>
         </div>
@@ -1019,24 +1308,47 @@ function KnowledgeTab({
 
       {/* ナレッジ一覧 */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Database className="w-5 h-5 text-gray-600" />
+        <div className="px-4 lg:px-6 py-4 border-b border-gray-200">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Database className="w-5 h-5 text-gray-600" />
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base lg:text-lg font-semibold text-gray-900">最近のナレッジ</h2>
+                <p className="text-xs lg:text-sm text-gray-500">
+                  {filteredKnowledge.length === knowledge.length
+                    ? `${knowledge.length}件登録`
+                    : `${filteredKnowledge.length}/${knowledge.length}件表示`}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <h2 className="text-base lg:text-lg font-semibold text-gray-900">最近のナレッジ</h2>
-              <p className="text-xs lg:text-sm text-gray-500">{knowledge.length}件登録</p>
+
+            {/* 検索・更新 */}
+            <div className="flex items-center gap-2 lg:gap-3">
+              {/* 検索ボックス */}
+              <div className="relative flex-1 lg:flex-none">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ナレッジを検索..."
+                  value={knowledgeSearch}
+                  onChange={(e) => setKnowledgeSearch(e.target.value)}
+                  className="w-full lg:w-48 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
+                />
+              </div>
+
+              {/* 更新ボタン */}
+              <button
+                onClick={loadKnowledge}
+                disabled={loadingKnowledge}
+                className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
+              >
+                <RefreshCw className={`w-4 h-4 ${loadingKnowledge ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">更新</span>
+              </button>
             </div>
           </div>
-          <button
-            onClick={loadKnowledge}
-            disabled={loadingKnowledge}
-            className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
-          >
-            <RefreshCw className={`w-4 h-4 ${loadingKnowledge ? "animate-spin" : ""}`} />
-            <span className="hidden sm:inline">更新</span>
-          </button>
         </div>
 
         <div className="p-4 lg:p-6">
@@ -1060,10 +1372,18 @@ function KnowledgeTab({
               <h3 className="text-lg font-medium text-gray-900 mb-2">ナレッジがありません</h3>
               <p className="text-sm text-gray-500">上のフォームからナレッジを投入してください</p>
             </div>
+          ) : filteredKnowledge.length === 0 ? (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Search className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">検索結果がありません</h3>
+              <p className="text-sm text-gray-500">別のキーワードで検索してください</p>
+            </div>
           ) : (
             <div className="space-y-3">
-              {knowledge.map((k) => (
-                <div key={k.id} className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all">
+              {filteredKnowledge.map((k) => (
+                <div key={k.id} className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all group">
                   <div
                     className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       k.type === "file"
@@ -1099,6 +1419,14 @@ function KnowledgeTab({
                       <p className="text-xs text-red-600 mt-1 break-words">エラー: {k.error_message}</p>
                     )}
                   </div>
+                  {/* 削除ボタン */}
+                  <button
+                    onClick={() => deleteKnowledge(k.id)}
+                    className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 lg:opacity-100 flex-shrink-0"
+                    title="削除"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               ))}
             </div>
