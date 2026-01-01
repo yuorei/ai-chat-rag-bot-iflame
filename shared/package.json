@@ -1,0 +1,13 @@
+{
+  "name": "@ai-chat-rag-bot/shared",
+  "version": "1.0.0",
+  "description": "Shared constants and types for AI Chat RAG Bot",
+  "main": "constants/ui-defaults.js",
+  "types": "constants/ui-defaults.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

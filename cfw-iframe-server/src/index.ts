@@ -1,5 +1,11 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { 
+  DEFAULT_COLORS, 
+  DEFAULT_LABELS, 
+  DEFAULT_WIDGET_BUTTON, 
+  DEFAULT_WIDGET_WINDOW 
+} from '../../shared/constants/ui-defaults'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -347,14 +353,26 @@ app.get('/ui-settings', async (c) => {
     if (!settings) {
       // Return default settings if none configured
       return c.json({
-        theme: getDefaultThemeSettings(),
-        widget: getDefaultWidgetSettings()
+        theme: {
+          colors: DEFAULT_COLORS,
+          labels: DEFAULT_LABELS
+        },
+        widget: {
+          button: DEFAULT_WIDGET_BUTTON,
+          window: DEFAULT_WIDGET_WINDOW
+        }
       })
     }
 
     return c.json({
-      theme: safeParseJSON(settings.theme_settings) || getDefaultThemeSettings(),
-      widget: safeParseJSON(settings.widget_settings) || getDefaultWidgetSettings()
+      theme: safeParseJSON(settings.theme_settings) || {
+        colors: DEFAULT_COLORS,
+        labels: DEFAULT_LABELS
+      },
+      widget: safeParseJSON(settings.widget_settings) || {
+        button: DEFAULT_WIDGET_BUTTON,
+        window: DEFAULT_WIDGET_WINDOW
+      }
     })
   } catch (error) {
     console.error('Error in /ui-settings:', error)
@@ -371,61 +389,6 @@ function safeParseJSON(text: string | null | undefined): unknown {
     return JSON.parse(text)
   } catch {
     return null
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: Default theme settings
-// ---------------------------------------------------------------------------
-function getDefaultThemeSettings() {
-  return {
-    colors: {
-      headerBackground: '#4a90e2',
-      headerText: '#ffffff',
-      bodyBackground: '#f5f5f5',
-      containerBackground: '#ffffff',
-      messagesBackground: '#ffffff',
-      botMessageBackground: '#f8f9fa',
-      botMessageText: '#333333',
-      botMessageBorder: '#e9ecef',
-      userMessageBackground: '#4a90e2',
-      userMessageGradientEnd: '#357abd',
-      userMessageText: '#ffffff',
-      inputAreaBackground: '#f8f9fa',
-      inputBackground: '#ffffff',
-      inputText: '#333333',
-      inputBorder: '#e9ecef',
-      inputBorderFocus: '#4a90e2',
-      accentColor: '#4a90e2',
-      accentHover: '#357abd'
-    },
-    labels: {
-      headerTitle: 'AI Chat Bot',
-      inputPlaceholder: 'メッセージを入力...',
-      welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: Default widget settings
-// ---------------------------------------------------------------------------
-function getDefaultWidgetSettings() {
-  return {
-    button: {
-      size: 64,
-      bottom: 20,
-      right: 20,
-      color: '#4a90e2',
-      label: '💬',
-      closeLabel: '✕'
-    },
-    window: {
-      width: '400px',
-      height: '600px',
-      mobileWidth: 'calc(100vw - 20px)',
-      mobileHeight: 'calc(100vh - 150px)'
-    }
   }
 }
 

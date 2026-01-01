@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp } from "lucide-react";
 import { fetchUISettings, updateUISettings } from "../../lib/api";
 import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels } from "../../lib/types";
+import { DEFAULT_COLORS, DEFAULT_LABELS, COLOR_LABELS } from "../../../../../shared/constants/ui-defaults";
 
 // プレビュー用のiframeベースURL（環境変数または固定値）
 const PREVIEW_BASE_URL = typeof window !== 'undefined'
@@ -16,54 +17,6 @@ type UIEditorTabProps = {
   setActiveChatId: (id: string) => void;
   setStatus: (status: string | null) => void;
   setError: (error: string | null) => void;
-};
-
-const DEFAULT_COLORS: ThemeColors = {
-  headerBackground: "#4a90e2",
-  headerText: "#ffffff",
-  bodyBackground: "#f5f5f5",
-  containerBackground: "#ffffff",
-  messagesBackground: "#ffffff",
-  botMessageBackground: "#f8f9fa",
-  botMessageText: "#333333",
-  botMessageBorder: "#e9ecef",
-  userMessageBackground: "#4a90e2",
-  userMessageGradientEnd: "#357abd",
-  userMessageText: "#ffffff",
-  inputAreaBackground: "#f8f9fa",
-  inputBackground: "#ffffff",
-  inputText: "#333333",
-  inputBorder: "#e9ecef",
-  inputBorderFocus: "#4a90e2",
-  accentColor: "#4a90e2",
-  accentHover: "#357abd",
-};
-
-const DEFAULT_LABELS: ThemeLabels = {
-  headerTitle: "AI Chat Bot",
-  inputPlaceholder: "メッセージを入力...",
-  welcomeMessage: "こんにちは！何かお手伝いできることはありますか？",
-};
-
-const COLOR_LABELS: Record<keyof ThemeColors, string> = {
-  headerBackground: "ヘッダー背景",
-  headerText: "ヘッダー文字",
-  bodyBackground: "ページ背景",
-  containerBackground: "コンテナ背景",
-  messagesBackground: "メッセージエリア背景",
-  botMessageBackground: "AIメッセージ背景",
-  botMessageText: "AIメッセージ文字",
-  botMessageBorder: "AIメッセージ枠線",
-  userMessageBackground: "ユーザーメッセージ背景",
-  userMessageGradientEnd: "ユーザーメッセージグラデーション終点",
-  userMessageText: "ユーザーメッセージ文字",
-  inputAreaBackground: "入力エリア背景",
-  inputBackground: "入力欄背景",
-  inputText: "入力欄文字",
-  inputBorder: "入力欄枠線",
-  inputBorderFocus: "入力欄フォーカス枠線",
-  accentColor: "アクセントカラー",
-  accentHover: "アクセントカラー(ホバー)",
 };
 
 export function UIEditorTab({
