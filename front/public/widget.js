@@ -110,6 +110,34 @@
     return context;
   }
 
+  // 親ページのテーマ（カラースキーム）を検出する関数
+  function detectTheme() {
+    // 1. グローバル設定またはdata属性で明示的に指定されている場合
+    const explicitTheme = globalConfig.theme || dataset.theme;
+    if (explicitTheme) {
+      return explicitTheme; // 'light', 'dark', or 'auto'
+    }
+
+    // 2. システムの設定を検出
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return 'dark';
+    }
+    return 'light';
+  }
+
+  // iframeにテーマを送信する関数
+  function sendThemeToIframe(iframe, theme) {
+    try {
+      iframe.contentWindow.postMessage({
+        type: 'setTheme',
+        theme: theme
+      }, '*');
+      console.log('[iframe-widget] Sent theme:', theme);
+    } catch (e) {
+      console.warn('[iframe-widget] Failed to send theme:', e);
+    }
+  }
+
   // iframeにページコンテキストを送信する関数
   function sendPageContextToIframe(iframe) {
     const context = collectPageContext();
@@ -120,6 +148,10 @@
         context: context
       }, '*');
       console.log('[iframe-widget] Sent page context on load:', context.title);
+
+      // テーマも送信
+      const theme = detectTheme();
+      sendThemeToIframe(iframe, theme);
     });
   }
 
@@ -132,8 +164,38 @@
         context: context
       }, '*');
       console.log('[iframe-widget] Sent page context now:', context.title);
+
+      // テーマも再送信
+      const theme = detectTheme();
+      sendThemeToIframe(iframe, theme);
     } catch (e) {
       console.warn('[iframe-widget] Failed to send page context:', e);
+    }
+  }
+
+  // システムのカラースキーム変更を監視してiframeに通知する関数
+  function watchSystemThemeChange(iframe) {
+    // 明示的にテーマが指定されている場合は監視しない
+    const explicitTheme = globalConfig.theme || dataset.theme;
+    if (explicitTheme && explicitTheme !== 'auto') {
+      return;
+    }
+
+    if (window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = function(e) {
+        const newTheme = e.matches ? 'dark' : 'light';
+        sendThemeToIframe(iframe, newTheme);
+        console.log('[iframe-widget] System theme changed to:', newTheme);
+      };
+
+      // 新しいAPIを使用（Safari 14+、Chrome 59+など）
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', handleChange);
+      } else if (mediaQuery.addListener) {
+        // 古いブラウザ用フォールバック
+        mediaQuery.addListener(handleChange);
+      }
     }
   }
 
@@ -294,6 +356,9 @@
 
     // iframeにページコンテキストを送信
     sendPageContextToIframe(iframe);
+
+    // システムテーマ変更を監視
+    watchSystemThemeChange(iframe);
 
     document.body.appendChild(iframe);
     document.body.appendChild(toggleButton);

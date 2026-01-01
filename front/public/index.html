@@ -6,6 +6,116 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Chat Bot</title>
     <style>
+        /* CSS Custom Properties for theming */
+        :root {
+            --bg-body: #f5f5f5;
+            --bg-container: #ffffff;
+            --bg-header: #4a90e2;
+            --text-header: #ffffff;
+            --bg-messages: #ffffff;
+            --bg-message-bot: #f8f9fa;
+            --text-message-bot: #333333;
+            --border-message-bot: #e9ecef;
+            --bg-message-user: #4a90e2;
+            --bg-message-user-end: #357abd;
+            --text-message-user: #ffffff;
+            --bg-input-area: #f8f9fa;
+            --border-input-area: #e9ecef;
+            --bg-input: #ffffff;
+            --text-input: #333333;
+            --border-input: #e9ecef;
+            --border-input-focus: #4a90e2;
+            --text-secondary: #666666;
+            --text-section-title: #2c3e50;
+            --text-emphasis: #7f8c8d;
+            --highlight-bg-start: #fff3cd;
+            --highlight-bg-end: #ffeaa7;
+            --highlight-border: #f1c40f;
+            --thinking-bg: #fff3cd;
+            --thinking-border: #ffeaa7;
+            --thinking-text: #856404;
+            --accent: #4a90e2;
+            --accent-hover: #357abd;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --shadow-color-strong: rgba(0, 0, 0, 0.15);
+            --btn-disabled: #cccccc;
+            --loading-text: #666666;
+        }
+
+        /* Dark mode styles */
+        [data-theme="dark"] {
+            --bg-body: #1a1a2e;
+            --bg-container: #16213e;
+            --bg-header: #0f3460;
+            --text-header: #e8e8e8;
+            --bg-messages: #16213e;
+            --bg-message-bot: #1f2940;
+            --text-message-bot: #e0e0e0;
+            --border-message-bot: #2a3a5a;
+            --bg-message-user: #3a7bc8;
+            --bg-message-user-end: #2d5aa0;
+            --text-message-user: #ffffff;
+            --bg-input-area: #1f2940;
+            --border-input-area: #2a3a5a;
+            --bg-input: #0f1a2e;
+            --text-input: #e0e0e0;
+            --border-input: #2a3a5a;
+            --border-input-focus: #4a90e2;
+            --text-secondary: #a0a0a0;
+            --text-section-title: #7fb8f0;
+            --text-emphasis: #9aa5b5;
+            --highlight-bg-start: #3d3a20;
+            --highlight-bg-end: #4a4520;
+            --highlight-border: #9a8a30;
+            --thinking-bg: #3d3a20;
+            --thinking-border: #4a4520;
+            --thinking-text: #d4c880;
+            --accent: #4a90e2;
+            --accent-hover: #5da0f2;
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            --shadow-color-strong: rgba(0, 0, 0, 0.4);
+            --btn-disabled: #3a3a5a;
+            --loading-text: #a0a0a0;
+        }
+
+        /* Auto dark mode based on system preference (when no explicit theme is set) */
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --bg-body: #1a1a2e;
+                --bg-container: #16213e;
+                --bg-header: #0f3460;
+                --text-header: #e8e8e8;
+                --bg-messages: #16213e;
+                --bg-message-bot: #1f2940;
+                --text-message-bot: #e0e0e0;
+                --border-message-bot: #2a3a5a;
+                --bg-message-user: #3a7bc8;
+                --bg-message-user-end: #2d5aa0;
+                --text-message-user: #ffffff;
+                --bg-input-area: #1f2940;
+                --border-input-area: #2a3a5a;
+                --bg-input: #0f1a2e;
+                --text-input: #e0e0e0;
+                --border-input: #2a3a5a;
+                --border-input-focus: #4a90e2;
+                --text-secondary: #a0a0a0;
+                --text-section-title: #7fb8f0;
+                --text-emphasis: #9aa5b5;
+                --highlight-bg-start: #3d3a20;
+                --highlight-bg-end: #4a4520;
+                --highlight-border: #9a8a30;
+                --thinking-bg: #3d3a20;
+                --thinking-border: #4a4520;
+                --thinking-text: #d4c880;
+                --accent: #4a90e2;
+                --accent-hover: #5da0f2;
+                --shadow-color: rgba(0, 0, 0, 0.3);
+                --shadow-color-strong: rgba(0, 0, 0, 0.4);
+                --btn-disabled: #3a3a5a;
+                --loading-text: #a0a0a0;
+            }
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,7 +124,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f5f5;
+            background: var(--bg-body);
             height: 100vh;
             overflow: hidden;
         }
@@ -25,13 +135,13 @@
             height: 100vh;
             max-width: 800px;
             margin: 0 auto;
-            background: white;
-            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            background: var(--bg-container);
+            box-shadow: 0 0 20px var(--shadow-color);
         }
 
         .chat-header {
-            background: #4a90e2;
-            color: white;
+            background: var(--bg-header);
+            color: var(--text-header);
             padding: 15px;
             text-align: center;
             font-weight: bold;
@@ -44,6 +154,7 @@
             display: flex;
             flex-direction: column;
             gap: 15px;
+            background: var(--bg-messages);
         }
 
         .message {
@@ -52,21 +163,21 @@
             border-radius: 18px;
             word-wrap: break-word;
             margin-bottom: 8px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px var(--shadow-color);
         }
 
         .user-message {
-            background: linear-gradient(135deg, #4a90e2, #357abd);
-            color: white;
+            background: linear-gradient(135deg, var(--bg-message-user), var(--bg-message-user-end));
+            color: var(--text-message-user);
             align-self: flex-end;
             border-bottom-right-radius: 6px;
         }
 
         .bot-message {
-            background: #f8f9fa;
-            color: #333;
+            background: var(--bg-message-bot);
+            color: var(--text-message-bot);
             align-self: flex-start;
-            border: 1px solid #e9ecef;
+            border: 1px solid var(--border-message-bot);
             border-bottom-left-radius: 6px;
         }
 
@@ -76,10 +187,10 @@
 
         .bot-message .section-title {
             font-weight: bold;
-            color: #2c3e50;
+            color: var(--text-section-title);
             margin: 12px 0 8px 0;
             font-size: 16px;
-            border-bottom: 2px solid #4a90e2;
+            border-bottom: 2px solid var(--accent);
             padding-bottom: 4px;
             display: inline-block;
         }
@@ -98,27 +209,27 @@
         }
 
         .bot-message .highlight {
-            background: linear-gradient(120deg, #fff3cd 0%, #ffeaa7 100%);
+            background: linear-gradient(120deg, var(--highlight-bg-start) 0%, var(--highlight-bg-end) 100%);
             padding: 2px 6px;
             border-radius: 4px;
             font-weight: 500;
-            border: 1px solid #f1c40f;
+            border: 1px solid var(--highlight-border);
         }
 
         .bot-message strong {
-            color: #2c3e50;
+            color: var(--text-section-title);
             font-weight: 600;
         }
 
         .bot-message em {
-            color: #7f8c8d;
+            color: var(--text-emphasis);
             font-style: italic;
         }
 
         .thinking {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
-            color: #856404;
+            background: var(--thinking-bg);
+            border: 1px solid var(--thinking-border);
+            color: var(--thinking-text);
             font-style: italic;
         }
 
@@ -126,8 +237,8 @@
             display: flex;
             flex-direction: column;
             padding: 15px 20px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
+            background: var(--bg-input-area);
+            border-top: 1px solid var(--border-input-area);
         }
 
         .chat-options {
@@ -139,7 +250,7 @@
             align-items: center;
             gap: 6px;
             font-size: 13px;
-            color: #666;
+            color: var(--text-secondary);
             cursor: pointer;
         }
 
@@ -150,7 +261,7 @@
         }
 
         .page-context-option:hover {
-            color: #4a90e2;
+            color: var(--accent);
         }
 
         .chat-input-row {
@@ -160,20 +271,26 @@
         .chat-input input {
             flex: 1;
             padding: 12px 16px;
-            border: 2px solid #e9ecef;
+            border: 2px solid var(--border-input);
             border-radius: 25px;
             outline: none;
             font-size: 14px;
+            background: var(--bg-input);
+            color: var(--text-input);
+        }
+
+        .chat-input input::placeholder {
+            color: var(--text-secondary);
         }
 
         .chat-input input:focus {
-            border-color: #4a90e2;
+            border-color: var(--border-input-focus);
         }
 
         .chat-input button {
             margin-left: 10px;
             padding: 12px 20px;
-            background: #4a90e2;
+            background: var(--accent);
             color: white;
             border: none;
             border-radius: 25px;
@@ -182,11 +299,11 @@
         }
 
         .chat-input button:hover {
-            background: #357abd;
+            background: var(--accent-hover);
         }
 
         .chat-input button:disabled {
-            background: #ccc;
+            background: var(--btn-disabled);
             cursor: not-allowed;
         }
 
@@ -195,12 +312,12 @@
             max-width: 80%;
             padding: 16px 20px;
             border-radius: 18px;
-            background: #f8f9fa;
-            color: #666;
+            background: var(--bg-message-bot);
+            color: var(--loading-text);
             align-self: flex-start;
-            border: 1px solid #e9ecef;
+            border: 1px solid var(--border-message-bot);
             border-bottom-left-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 1px 3px var(--shadow-color);
             margin-bottom: 8px;
         }
 
@@ -367,6 +484,25 @@
             }
         }
 
+        // テーマを設定する関数
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else if (theme === 'light') {
+                document.documentElement.setAttribute('data-theme', 'light');
+            } else {
+                // 'auto' または未指定の場合はシステム設定に従う
+                document.documentElement.removeAttribute('data-theme');
+            }
+            console.log('[chat] Theme set to:', theme || 'auto');
+        }
+
+        // URLパラメータからテーマを取得
+        const themeParam = urlParams.get('theme');
+        if (themeParam) {
+            setTheme(themeParam);
+        }
+
         // iframe対応のためのpostMessageリスナー
         window.addEventListener('message', function (event) {
             if (event.data.type === 'sendMessage') {
@@ -382,6 +518,10 @@
                 if (optionsElement && pageContext && (pageContext.bodyText || pageContext.title)) {
                     optionsElement.style.display = 'flex';
                 }
+            }
+            // 親ページからのテーマ情報を受信
+            if (event.data.type === 'setTheme') {
+                setTheme(event.data.theme);
             }
         });
     </script>
