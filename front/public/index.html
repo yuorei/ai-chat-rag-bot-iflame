@@ -324,6 +324,32 @@
         .loading.show {
             display: block;
         }
+
+        .settings-warning {
+            display: none;
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 12px 20px;
+            margin: 0;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        [data-theme="dark"] .settings-warning {
+            background: #3d3a20;
+            border-color: #9a8a30;
+            color: #d4c880;
+        }
+
+        .settings-warning.show {
+            display: block;
+        }
+
+        .settings-warning-icon {
+            margin-right: 6px;
+        }
     </style>
 </head>
 
@@ -333,7 +359,10 @@
             AIが回答します。質問してください。
         </div>
 
-
+        <div class="settings-warning" id="settingsWarning">
+            <span class="settings-warning-icon">⚠️</span>
+            <span>UI設定の読み込みに失敗しました。デフォルト設定を使用しています。</span>
+        </div>
 
         <div class="chat-messages" id="chatMessages">
             <div class="message bot-message">
@@ -551,6 +580,18 @@
             console.log('[chat] Applied UI settings');
         }
 
+        // UI設定読み込み失敗の警告を表示
+        function showSettingsWarning(show = true) {
+            const warningEl = document.getElementById('settingsWarning');
+            if (warningEl) {
+                if (show) {
+                    warningEl.classList.add('show');
+                } else {
+                    warningEl.classList.remove('show');
+                }
+            }
+        }
+
         // UI設定を読み込む
         async function loadUISettings() {
             if (!CHAT_ID) return;
@@ -563,12 +604,15 @@
                 const response = await fetch(`${API_BASE}/ui-settings?chatId=${CHAT_ID}`);
                 if (!response.ok) {
                     console.warn('[chat] Failed to load UI settings:', response.status);
+                    showSettingsWarning(true);
                     return;
                 }
                 const { theme } = await response.json();
                 applyThemeSettings(theme);
+                showSettingsWarning(false); // 成功したら警告を非表示
             } catch (error) {
                 console.warn('[chat] Failed to load UI settings:', error);
+                showSettingsWarning(true);
             }
         }
 
@@ -598,6 +642,7 @@
             // 管理画面からのプレビュー用UI設定を受信
             if (event.data.type === 'uiSettingsPreview') {
                 applyThemeSettings(event.data.settings);
+                showSettingsWarning(false); // プレビュー設定が適用されたら警告を非表示
             }
         });
     </script>
