@@ -2,6 +2,29 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 // ---------------------------------------------------------------------------
+// Origin Cache (TTL: 5 minutes)
+// ---------------------------------------------------------------------------
+const ORIGIN_CACHE_TTL_MS = 5 * 60 * 1000
+const originCache = new Map<string, { allowed: boolean; expiresAt: number }>()
+
+function getCachedOrigin(origin: string): boolean | null {
+  const entry = originCache.get(origin)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    originCache.delete(origin)
+    return null
+  }
+  return entry.allowed
+}
+
+function setCachedOrigin(origin: string, allowed: boolean): void {
+  originCache.set(origin, {
+    allowed,
+    expiresAt: Date.now() + ORIGIN_CACHE_TTL_MS,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 type Bindings = {
@@ -38,22 +61,6 @@ interface ChatTarget {
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 // ---------------------------------------------------------------------------
-// CORS Middleware
-// ---------------------------------------------------------------------------
-app.use('*', async (c, next) => {
-  const allowedOrigins = c.env.ALLOWED_ORIGINS
-  const corsMiddleware = cors({
-    origin: allowedOrigins === '*' ? '*' : allowedOrigins.split(','),
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    exposeHeaders: ['Content-Length'],
-    maxAge: 86400,
-    credentials: true,
-  })
-  return corsMiddleware(c, next)
-})
-
-// ---------------------------------------------------------------------------
 // Helper: Normalize target (domain)
 // ---------------------------------------------------------------------------
 function normalizeTarget(target: string): string {
@@ -68,6 +75,103 @@ function normalizeTarget(target: string): string {
   normalized = normalized.replace(/^www\./, '')
   return normalized
 }
+
+// ---------------------------------------------------------------------------
+// Helper: Check if origin is registered in database (with cache)
+// ---------------------------------------------------------------------------
+async function isOriginAllowed(db: D1Database, origin: string): Promise<boolean> {
+  if (!origin) return false
+
+  const normalized = normalizeTarget(origin)
+  if (!normalized) return false
+
+  // Check cache first
+  const cached = getCachedOrigin(normalized)
+  if (cached !== null) {
+    return cached
+  }
+
+  // Check chat_targets table
+  const targetRow = await db
+    .prepare('SELECT 1 FROM chat_targets WHERE target = ? LIMIT 1')
+    .bind(normalized)
+    .first()
+  if (targetRow) {
+    setCachedOrigin(normalized, true)
+    return true
+  }
+
+  // Check chat_profiles.target directly
+  const profileRow = await db
+    .prepare('SELECT 1 FROM chat_profiles WHERE target = ? AND target_type = ? LIMIT 1')
+    .bind(normalized, 'web')
+    .first()
+  if (profileRow) {
+    setCachedOrigin(normalized, true)
+    return true
+  }
+
+  setCachedOrigin(normalized, false)
+  return false
+}
+
+// ---------------------------------------------------------------------------
+// Paths that don't require Origin header (health checks, etc.)
+// ---------------------------------------------------------------------------
+const PUBLIC_PATHS = ['/', '/health']
+
+// ---------------------------------------------------------------------------
+// Common CORS configuration
+// ---------------------------------------------------------------------------
+const CORS_CONFIG = {
+  allowMethods: ['GET', 'POST', 'OPTIONS'],
+  allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposeHeaders: ['Content-Length'],
+  maxAge: 86400,
+  credentials: true,
+}
+
+// ---------------------------------------------------------------------------
+// CORS Middleware - Only allow registered domains
+// ---------------------------------------------------------------------------
+app.use('*', async (c, next) => {
+  const origin = c.req.header('Origin') || ''
+  const allowedOrigins = c.env.ALLOWED_ORIGINS
+  const path = new URL(c.req.url).pathname
+
+  // If ALLOWED_ORIGINS is '*', check database for registered domains
+  if (allowedOrigins === '*') {
+    // Allow public paths without Origin (for health checks, monitoring)
+    if (!origin && PUBLIC_PATHS.includes(path)) {
+      return next()
+    }
+
+    // Block requests without Origin header (curl, etc.)
+    if (!origin) {
+      return c.json({ error: 'Origin header is required' }, 403)
+    }
+
+    const isAllowed = await isOriginAllowed(c.env.DB, origin)
+
+    // Block unregistered origins
+    if (!isAllowed) {
+      return c.json({ error: 'Origin not allowed' }, 403)
+    }
+
+    const corsMiddleware = cors({
+      ...CORS_CONFIG,
+      origin: origin,
+    })
+    return corsMiddleware(c, next)
+  }
+
+  // Static list of allowed origins
+  const corsMiddleware = cors({
+    ...CORS_CONFIG,
+    origin: allowedOrigins.split(','),
+  })
+  return corsMiddleware(c, next)
+})
 
 // ---------------------------------------------------------------------------
 // Helper: Resolve chat profile by target/domain
