@@ -1080,6 +1080,55 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
 
 // --- UI Settings helpers ---
 
+function getDefaultThemeSettings(): ThemeSettings {
+  return {
+    colors: {
+      headerBackground: '#4a90e2',
+      headerText: '#ffffff',
+      bodyBackground: '#f5f5f5',
+      containerBackground: '#ffffff',
+      messagesBackground: '#ffffff',
+      botMessageBackground: '#f8f9fa',
+      botMessageText: '#333333',
+      botMessageBorder: '#e9ecef',
+      userMessageBackground: '#4a90e2',
+      userMessageGradientEnd: '#357abd',
+      userMessageText: '#ffffff',
+      inputAreaBackground: '#f8f9fa',
+      inputBackground: '#ffffff',
+      inputText: '#333333',
+      inputBorder: '#e9ecef',
+      inputBorderFocus: '#4a90e2',
+      accentColor: '#4a90e2',
+      accentHover: '#357abd'
+    },
+    labels: {
+      headerTitle: 'AI Chat Bot',
+      inputPlaceholder: 'メッセージを入力...',
+      welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
+    }
+  }
+}
+
+function getDefaultWidgetSettings(): WidgetSettings {
+  return {
+    button: {
+      size: 64,
+      bottom: 20,
+      right: 20,
+      color: '#4a90e2',
+      label: '💬',
+      closeLabel: '✕'
+    },
+    window: {
+      width: '400px',
+      height: '600px',
+      mobileWidth: 'calc(100vw - 20px)',
+      mobileHeight: 'calc(100vh - 150px)'
+    }
+  }
+}
+
 async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
   const row = await c.env.DB.prepare(
     `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
@@ -1091,11 +1140,25 @@ async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings |
 
   if (!row) return null
 
+  // Parse theme_settings with proper error handling
+  const parsedTheme = safeParseJSON(row.theme_settings || '{}')
+  if (!parsedTheme) {
+    console.error(`Failed to parse theme_settings for chatId: ${chatId}, using defaults`)
+  }
+  const theme_settings = parsedTheme || getDefaultThemeSettings()
+
+  // Parse widget_settings with proper error handling
+  const parsedWidget = safeParseJSON(row.widget_settings || '{}')
+  if (!parsedWidget) {
+    console.error(`Failed to parse widget_settings for chatId: ${chatId}, using defaults`)
+  }
+  const widget_settings = parsedWidget || getDefaultWidgetSettings()
+
   return {
     id: row.id as string,
     chat_id: row.chat_id as string,
-    theme_settings: safeParseJSON(row.theme_settings || '{}') || {},
-    widget_settings: safeParseJSON(row.widget_settings || '{}') || {},
+    theme_settings,
+    widget_settings,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string
   }
@@ -1105,49 +1168,8 @@ function getDefaultUISettings(chatId: string): ChatUISettings {
   return {
     id: '',
     chat_id: chatId,
-    theme_settings: {
-      colors: {
-        headerBackground: '#4a90e2',
-        headerText: '#ffffff',
-        bodyBackground: '#f5f5f5',
-        containerBackground: '#ffffff',
-        messagesBackground: '#ffffff',
-        botMessageBackground: '#f8f9fa',
-        botMessageText: '#333333',
-        botMessageBorder: '#e9ecef',
-        userMessageBackground: '#4a90e2',
-        userMessageGradientEnd: '#357abd',
-        userMessageText: '#ffffff',
-        inputAreaBackground: '#f8f9fa',
-        inputBackground: '#ffffff',
-        inputText: '#333333',
-        inputBorder: '#e9ecef',
-        inputBorderFocus: '#4a90e2',
-        accentColor: '#4a90e2',
-        accentHover: '#357abd'
-      },
-      labels: {
-        headerTitle: 'AI Chat Bot',
-        inputPlaceholder: 'メッセージを入力...',
-        welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
-      }
-    },
-    widget_settings: {
-      button: {
-        size: 64,
-        bottom: 20,
-        right: 20,
-        color: '#4a90e2',
-        label: '💬',
-        closeLabel: '✕'
-      },
-      window: {
-        width: '400px',
-        height: '600px',
-        mobileWidth: 'calc(100vw - 20px)',
-        mobileHeight: 'calc(100vh - 150px)'
-      }
-    },
+    theme_settings: getDefaultThemeSettings(),
+    widget_settings: getDefaultWidgetSettings(),
     created_at: '',
     updated_at: ''
   }
