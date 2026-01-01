@@ -1,6 +1,16 @@
-import { Hono } from 'hono'
+import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
+import {
+  DEFAULT_COLORS,
+  DEFAULT_LABELS,
+  DEFAULT_WIDGET_BUTTON,
+  DEFAULT_WIDGET_WINDOW,
+  DEFAULT_WIDGET_BANNER,
+  ThemeSettings,
+  WidgetSettings,
+  ChatUISettings,
+} from '../../../shared/constants/ui-defaults'
 
 type D1Result<T = unknown> = {
   results?: T[]
@@ -85,65 +95,7 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
-type ChatUISettings = {
-  id: string
-  chat_id: string
-  theme_settings: ThemeSettings
-  widget_settings: WidgetSettings
-  created_at: string
-  updated_at: string
-}
-
-type ThemeSettings = {
-  colors?: {
-    headerBackground?: string
-    headerText?: string
-    bodyBackground?: string
-    containerBackground?: string
-    messagesBackground?: string
-    botMessageBackground?: string
-    botMessageText?: string
-    botMessageBorder?: string
-    userMessageBackground?: string
-    userMessageGradientEnd?: string
-    userMessageText?: string
-    inputAreaBackground?: string
-    inputBackground?: string
-    inputText?: string
-    inputBorder?: string
-    inputBorderFocus?: string
-    accentColor?: string
-    accentHover?: string
-  }
-  labels?: {
-    headerTitle?: string
-    inputPlaceholder?: string
-    welcomeMessage?: string
-  }
-}
-
-type WidgetSettings = {
-  button?: {
-    size?: number
-    bottom?: number
-    right?: number
-    color?: string
-    label?: string
-    closeLabel?: string
-    imageUrl?: string
-  }
-  window?: {
-    width?: string
-    height?: string
-    mobileWidth?: string
-    mobileHeight?: string
-  }
-  banner?: {
-    text?: string
-    backgroundColor?: string
-    textColor?: string
-  }
-}
+// ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
@@ -1199,6 +1151,21 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
 
 // --- UI Settings helpers ---
 
+function getDefaultThemeSettings(): ThemeSettings {
+  return {
+    colors: DEFAULT_COLORS,
+    labels: DEFAULT_LABELS
+  }
+}
+
+function getDefaultWidgetSettings(): WidgetSettings {
+  return {
+    button: DEFAULT_WIDGET_BUTTON,
+    window: DEFAULT_WIDGET_WINDOW,
+    banner: DEFAULT_WIDGET_BANNER
+  }
+}
+
 async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
   const row = await c.env.DB.prepare(
     `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
@@ -1210,11 +1177,31 @@ async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings |
 
   if (!row) return null
 
+  // Parse theme_settings with proper error handling
+  const parsedTheme = safeParseJSON(row.theme_settings || '{}')
+  if (!parsedTheme) {
+    console.error(`Failed to parse theme_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const theme_settings = (parsedTheme && Object.keys(parsedTheme).length > 0) 
+    ? parsedTheme 
+    : getDefaultThemeSettings()
+
+  // Parse widget_settings with proper error handling
+  const parsedWidget = safeParseJSON(row.widget_settings || '{}')
+  if (!parsedWidget) {
+    console.error(`Failed to parse widget_settings for chatId: ${chatId}, using defaults`)
+  }
+  // Use parsed settings only if they exist and are non-empty, otherwise use defaults
+  const widget_settings = (parsedWidget && Object.keys(parsedWidget).length > 0) 
+    ? parsedWidget 
+    : getDefaultWidgetSettings()
+
   return {
     id: row.id as string,
     chat_id: row.chat_id as string,
-    theme_settings: safeParseJSON(row.theme_settings || '{}') || {},
-    widget_settings: safeParseJSON(row.widget_settings || '{}') || {},
+    theme_settings,
+    widget_settings,
     created_at: row.created_at as string,
     updated_at: row.updated_at as string
   }
@@ -1224,71 +1211,25 @@ function getDefaultUISettings(chatId: string): ChatUISettings {
   return {
     id: '',
     chat_id: chatId,
-    theme_settings: {
-      colors: {
-        headerBackground: '#4a90e2',
-        headerText: '#ffffff',
-        bodyBackground: '#f5f5f5',
-        containerBackground: '#ffffff',
-        messagesBackground: '#ffffff',
-        botMessageBackground: '#f8f9fa',
-        botMessageText: '#333333',
-        botMessageBorder: '#e9ecef',
-        userMessageBackground: '#4a90e2',
-        userMessageGradientEnd: '#357abd',
-        userMessageText: '#ffffff',
-        inputAreaBackground: '#f8f9fa',
-        inputBackground: '#ffffff',
-        inputText: '#333333',
-        inputBorder: '#e9ecef',
-        inputBorderFocus: '#4a90e2',
-        accentColor: '#4a90e2',
-        accentHover: '#357abd'
-      },
-      labels: {
-        headerTitle: 'AI Chat Bot',
-        inputPlaceholder: 'メッセージを入力...',
-        welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
-      }
-    },
-    widget_settings: {
-      button: {
-        size: 64,
-        bottom: 20,
-        right: 20,
-        color: '#4a90e2',
-        label: '💬',
-        closeLabel: '✕'
-      },
-      window: {
-        width: '400px',
-        height: '600px',
-        mobileWidth: 'calc(100vw - 20px)',
-        mobileHeight: 'calc(100vh - 150px)'
-      },
-      banner: {
-        text: 'チャットで質問できます！',
-        backgroundColor: '#4dd0e1',
-        textColor: '#000000'
-      }
-    },
+    theme_settings: getDefaultThemeSettings(),
+    widget_settings: getDefaultWidgetSettings(),
     created_at: '',
     updated_at: ''
   }
 }
 
 async function upsertUISettings(
-  c: any,
+  ctx: Context<{ Bindings: Bindings; Variables: Variables }>,
   chatId: string,
   themeSettings: ThemeSettings,
   widgetSettings: WidgetSettings
 ): Promise<void> {
-  const existing = await fetchUISettings(c, chatId)
+  const existing = await fetchUISettings(ctx, chatId)
   const themeJson = JSON.stringify(themeSettings)
   const widgetJson = JSON.stringify(widgetSettings)
 
   if (existing) {
-    await c.env.DB.prepare(
+    await ctx.env.DB.prepare(
       `UPDATE chat_ui_settings
        SET theme_settings = ?, widget_settings = ?, updated_at = datetime('now')
        WHERE chat_id = ?`
@@ -1297,7 +1238,7 @@ async function upsertUISettings(
       .run()
   } else {
     const id = crypto.randomUUID()
-    await c.env.DB.prepare(
+    await ctx.env.DB.prepare(
       `INSERT INTO chat_ui_settings (id, chat_id, theme_settings, widget_settings, created_at, updated_at)
        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
     )
