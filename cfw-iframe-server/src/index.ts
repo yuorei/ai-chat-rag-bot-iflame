@@ -58,8 +58,31 @@ function normalizeTarget(target: string): string {
 // ---------------------------------------------------------------------------
 app.use('*', cors({
   origin: (origin, c) => {
-    const allowedOrigins = c.env.ALLOWED_ORIGINS.split(',')
-    return allowedOrigins.includes(origin) ? origin : allowedOrigins[0]
+    // If no origin (e.g., server-to-server requests), allow
+    if (!origin) return '*'
+
+    const allowedOrigins = c.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return origin
+    }
+
+    // Check for wildcard patterns (e.g., *.example.com)
+    for (const allowed of allowedOrigins) {
+      if (allowed === '*') {
+        return origin
+      }
+      if (allowed.startsWith('*.')) {
+        const suffix = allowed.slice(1) // Remove the *
+        if (origin.endsWith(suffix) || origin === `https://${allowed.slice(2)}` || origin === `http://${allowed.slice(2)}`) {
+          return origin
+        }
+      }
+    }
+
+    // Not allowed - return null to block
+    return null
   },
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -294,6 +317,119 @@ app.get('/profile/:chatId', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /ui-settings - Get UI settings for a chat (public endpoint for iframe)
+// Query params: chatId or target
+// ---------------------------------------------------------------------------
+app.get('/ui-settings', async (c) => {
+  const chatId = c.req.query('chatId')
+  const target = c.req.query('target') || c.req.header('Origin') || c.req.header('Referer')
+
+  let resolvedChatId = chatId
+
+  // Resolve chatId from target if not provided
+  if (!resolvedChatId && target) {
+    const profile = await resolveChatProfile(c.env.DB, target)
+    if (profile) {
+      resolvedChatId = profile.id
+    }
+  }
+
+  if (!resolvedChatId) {
+    return c.json({ error: 'chatId or target is required' }, 400)
+  }
+
+  try {
+    const settings = await c.env.DB
+      .prepare('SELECT theme_settings, widget_settings FROM chat_ui_settings WHERE chat_id = ?')
+      .bind(resolvedChatId)
+      .first<{ theme_settings: string; widget_settings: string }>()
+
+    if (!settings) {
+      // Return default settings if none configured
+      return c.json({
+        theme: getDefaultThemeSettings(),
+        widget: getDefaultWidgetSettings()
+      })
+    }
+
+    return c.json({
+      theme: safeParseJSON(settings.theme_settings) || getDefaultThemeSettings(),
+      widget: safeParseJSON(settings.widget_settings) || getDefaultWidgetSettings()
+    })
+  } catch (error) {
+    console.error('Error in /ui-settings:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
+// Helper: Safe JSON parse
+// ---------------------------------------------------------------------------
+function safeParseJSON(text: string | null | undefined): unknown {
+  if (!text) return null
+  try {
+    return JSON.parse(text)
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Default theme settings
+// ---------------------------------------------------------------------------
+function getDefaultThemeSettings() {
+  return {
+    colors: {
+      headerBackground: '#4a90e2',
+      headerText: '#ffffff',
+      bodyBackground: '#f5f5f5',
+      containerBackground: '#ffffff',
+      messagesBackground: '#ffffff',
+      botMessageBackground: '#f8f9fa',
+      botMessageText: '#333333',
+      botMessageBorder: '#e9ecef',
+      userMessageBackground: '#4a90e2',
+      userMessageGradientEnd: '#357abd',
+      userMessageText: '#ffffff',
+      inputAreaBackground: '#f8f9fa',
+      inputBackground: '#ffffff',
+      inputText: '#333333',
+      inputBorder: '#e9ecef',
+      inputBorderFocus: '#4a90e2',
+      accentColor: '#4a90e2',
+      accentHover: '#357abd'
+    },
+    labels: {
+      headerTitle: 'AI Chat Bot',
+      inputPlaceholder: 'メッセージを入力...',
+      welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helper: Default widget settings
+// ---------------------------------------------------------------------------
+function getDefaultWidgetSettings() {
+  return {
+    button: {
+      size: 64,
+      bottom: 20,
+      right: 20,
+      color: '#4a90e2',
+      label: '💬',
+      closeLabel: '✕'
+    },
+    window: {
+      width: '400px',
+      height: '600px',
+      mobileWidth: 'calc(100vw - 20px)',
+      mobileHeight: 'calc(100vh - 150px)'
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Root
 // ---------------------------------------------------------------------------
 app.get('/', (c) => {
@@ -305,6 +441,7 @@ app.get('/', (c) => {
       init: 'GET /init?target=<domain> or POST /init',
       chat: 'POST /chat',
       profile: 'GET /profile/:chatId',
+      uiSettings: 'GET /ui-settings?chatId=<id> or ?target=<domain>',
     },
   })
 })
