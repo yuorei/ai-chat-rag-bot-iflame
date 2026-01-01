@@ -62,11 +62,11 @@ export function ChatsTab({
     if (!/^[a-zA-Z0-9-_]+$/.test(id)) {
       return "英数字、ハイフン、アンダースコアのみ使用可能です";
     }
-    if (id.length < 3) {
-      return "3文字以上で入力してください";
+    if (id.length < 2) {
+      return "チャットIDは2文字以上50文字以内で入力してください";
     }
     if (id.length > 50) {
-      return "50文字以内で入力してください";
+      return "チャットIDは2文字以上50文字以内で入力してください";
     }
     return null;
   };
