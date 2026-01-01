@@ -1145,14 +1145,18 @@ async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings |
   if (!parsedTheme) {
     console.error(`Failed to parse theme_settings for chatId: ${chatId}, using defaults`)
   }
-  const theme_settings = parsedTheme || getDefaultThemeSettings()
+  // Check if parsed result is empty object and use defaults if so
+  const isThemeEmpty = parsedTheme && Object.keys(parsedTheme).length === 0
+  const theme_settings = (!parsedTheme || isThemeEmpty) ? getDefaultThemeSettings() : parsedTheme
 
   // Parse widget_settings with proper error handling
   const parsedWidget = safeParseJSON(row.widget_settings || '{}')
   if (!parsedWidget) {
     console.error(`Failed to parse widget_settings for chatId: ${chatId}, using defaults`)
   }
-  const widget_settings = parsedWidget || getDefaultWidgetSettings()
+  // Check if parsed result is empty object and use defaults if so
+  const isWidgetEmpty = parsedWidget && Object.keys(parsedWidget).length === 0
+  const widget_settings = (!parsedWidget || isWidgetEmpty) ? getDefaultWidgetSettings() : parsedWidget
 
   return {
     id: row.id as string,
