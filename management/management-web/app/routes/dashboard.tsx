@@ -26,6 +26,7 @@ import {
   Upload,
   ExternalLink,
   Bot,
+  Menu,
 } from "lucide-react";
 
 export function meta() {
@@ -47,6 +48,7 @@ export default function Dashboard() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"chats" | "knowledge">("chats");
   const emptyChatForm = { id: "", targets: [""], display_name: "", system_prompt: "" };
   const [chatForm, setChatForm] = useState(emptyChatForm);
@@ -320,8 +322,16 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
+      {/* モバイルオーバーレイ */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* サイドバー */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full">
+      <aside className={`w-64 bg-white border-r border-gray-200 flex flex-col fixed h-full z-50 transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}>
         {/* ロゴ */}
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
@@ -335,7 +345,7 @@ export default function Dashboard() {
         {/* ナビゲーション */}
         <nav className="flex-1 p-4 space-y-1">
           <button
-            onClick={() => setActiveTab("chats")}
+            onClick={() => { setActiveTab("chats"); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
               activeTab === "chats"
                 ? "bg-blue-50 text-blue-700 shadow-sm"
@@ -346,7 +356,7 @@ export default function Dashboard() {
             チャット管理
           </button>
           <button
-            onClick={() => setActiveTab("knowledge")}
+            onClick={() => { setActiveTab("knowledge"); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
               activeTab === "knowledge"
                 ? "bg-blue-50 text-blue-700 shadow-sm"
@@ -358,6 +368,7 @@ export default function Dashboard() {
           </button>
           <Link
             to="/docs"
+            onClick={() => setSidebarOpen(false)}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all"
           >
             <Book className="w-5 h-5" />
@@ -399,28 +410,37 @@ export default function Dashboard() {
       </aside>
 
       {/* メインコンテンツ */}
-      <main className="flex-1 ml-64">
+      <main className="flex-1 lg:ml-64">
         {/* ヘッダー */}
-        <header className="h-16 bg-white border-b border-gray-200 flex items-center px-8 sticky top-0 z-10">
-          <div className="flex items-center justify-between w-full">
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
-                {activeTab === "chats" ? "チャット管理" : "ナレッジ投入"}
-              </h1>
-              <p className="text-sm text-gray-500">
-                {activeTab === "chats"
-                  ? "チャットAIの登録・編集・削除を行います"
-                  : "選択したチャットにナレッジを追加します"}
-              </p>
+        <header className="h-16 bg-white border-b border-gray-200 flex items-center px-4 lg:px-8 sticky top-0 z-10">
+          <div className="flex items-center justify-between w-full gap-4">
+            <div className="flex items-center gap-3">
+              {/* モバイルメニューボタン */}
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 -ml-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-xl lg:hidden"
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+              <div>
+                <h1 className="text-lg lg:text-xl font-bold text-gray-900">
+                  {activeTab === "chats" ? "チャット管理" : "ナレッジ投入"}
+                </h1>
+                <p className="text-xs lg:text-sm text-gray-500 hidden sm:block">
+                  {activeTab === "chats"
+                    ? "チャットAIの登録・編集・削除を行います"
+                    : "選択したチャットにナレッジを追加します"}
+                </p>
+              </div>
             </div>
 
             {/* 操作対象チャット */}
             {activeTab === "knowledge" && (
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-xl">
-                  <span className="text-sm text-blue-600 font-medium">操作対象:</span>
+                <div className="flex items-center gap-2 bg-blue-50 px-3 lg:px-4 py-2 rounded-xl">
+                  <span className="text-xs lg:text-sm text-blue-600 font-medium hidden sm:inline">操作対象:</span>
                   <select
-                    className="bg-transparent border-none text-sm font-semibold text-blue-700 focus:outline-none cursor-pointer"
+                    className="bg-transparent border-none text-xs lg:text-sm font-semibold text-blue-700 focus:outline-none cursor-pointer max-w-[120px] lg:max-w-none"
                     value={activeChatId}
                     onChange={(e) => setActiveChatId(e.target.value)}
                   >
@@ -439,7 +459,7 @@ export default function Dashboard() {
 
         {/* 通知 */}
         {(status || error) && (
-          <div className="px-8 pt-4">
+          <div className="px-4 lg:px-8 pt-4">
             <div
               className={`flex items-center gap-3 px-4 py-3 rounded-xl ${
                 status
@@ -466,7 +486,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="p-8">
+        <div className="p-4 lg:p-8">
           {activeTab === "chats" ? (
             <ChatsTab
               chats={chats}
@@ -557,8 +577,8 @@ function ChatsTab({
           </div>
         </div>
 
-        <form onSubmit={submitChat} className="p-6 space-y-6">
-          <div className="grid gap-6 md:grid-cols-2">
+        <form onSubmit={submitChat} className="p-4 lg:p-6 space-y-4 lg:space-y-6">
+          <div className="grid gap-4 lg:gap-6 grid-cols-1 md:grid-cols-2">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
                 チャットID（エイリアス）
@@ -680,29 +700,29 @@ function ChatsTab({
 
       {/* 登録済みチャット一覧 */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
               <MessageSquare className="w-5 h-5 text-gray-600" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">登録済みチャット</h2>
-              <p className="text-sm text-gray-500">{chats.length}件のチャットが登録されています</p>
+            <div className="min-w-0">
+              <h2 className="text-base lg:text-lg font-semibold text-gray-900">登録済みチャット</h2>
+              <p className="text-xs lg:text-sm text-gray-500">{chats.length}件登録</p>
             </div>
           </div>
           <button
             onClick={loadChats}
             disabled={loadingChats}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60"
+            className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
           >
             <RefreshCw className={`w-4 h-4 ${loadingChats ? "animate-spin" : ""}`} />
-            更新
+            <span className="hidden sm:inline">更新</span>
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 lg:p-6">
           {loadingChats ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="animate-pulse rounded-xl border border-gray-200 p-4">
                   <div className="h-5 bg-gray-200 rounded w-2/3 mb-3" />
@@ -723,7 +743,7 @@ function ChatsTab({
               <p className="text-sm text-gray-500">上のフォームから新しいチャットを登録してください</p>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {chats.map((c) => (
                 <div
                   key={c.id}
@@ -845,19 +865,19 @@ function KnowledgeTab({
     <div className="space-y-8">
       {/* 操作対象チャット情報 */}
       {activeChat && (
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-              <MessageSquare className="w-6 h-6 text-blue-600" />
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-4 lg:p-6">
+          <div className="flex items-center gap-3 lg:gap-4">
+            <div className="w-10 h-10 lg:w-12 lg:h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <MessageSquare className="w-5 h-5 lg:w-6 lg:h-6 text-blue-600" />
             </div>
-            <div className="flex-1">
-              <p className="text-sm text-blue-600 font-medium">操作対象チャット</p>
-              <h3 className="text-lg font-bold text-gray-900">{activeChat.display_name || activeChat.id}</h3>
-              <div className="flex flex-wrap gap-2 mt-2">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs lg:text-sm text-blue-600 font-medium">操作対象チャット</p>
+              <h3 className="text-base lg:text-lg font-bold text-gray-900 truncate">{activeChat.display_name || activeChat.id}</h3>
+              <div className="flex flex-wrap gap-1.5 lg:gap-2 mt-2">
                 {(activeChat.targets && activeChat.targets.length > 0 ? activeChat.targets : [activeChat.target]).map((t) => (
                   <span
                     key={t}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-white text-gray-700 text-xs font-medium rounded-full shadow-sm"
+                    className="inline-flex items-center gap-1 px-2 lg:px-2.5 py-0.5 lg:py-1 bg-white text-gray-700 text-xs font-medium rounded-full shadow-sm"
                   >
                     <Globe className="w-3 h-3" />
                     {t}
@@ -870,7 +890,7 @@ function KnowledgeTab({
       )}
 
       {/* ナレッジ投入フォーム */}
-      <div className="grid gap-6 md:grid-cols-3">
+      <div className="grid gap-4 lg:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
         {/* ファイルアップロード */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-gray-200">
@@ -999,27 +1019,27 @@ function KnowledgeTab({
 
       {/* ナレッジ一覧 */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center">
+        <div className="px-4 lg:px-6 py-4 border-b border-gray-200 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
               <Database className="w-5 h-5 text-gray-600" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">最近のナレッジ</h2>
-              <p className="text-sm text-gray-500">{knowledge.length}件のナレッジが登録されています</p>
+            <div className="min-w-0">
+              <h2 className="text-base lg:text-lg font-semibold text-gray-900">最近のナレッジ</h2>
+              <p className="text-xs lg:text-sm text-gray-500">{knowledge.length}件登録</p>
             </div>
           </div>
           <button
             onClick={loadKnowledge}
             disabled={loadingKnowledge}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60"
+            className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
           >
             <RefreshCw className={`w-4 h-4 ${loadingKnowledge ? "animate-spin" : ""}`} />
-            更新
+            <span className="hidden sm:inline">更新</span>
           </button>
         </div>
 
-        <div className="p-6">
+        <div className="p-4 lg:p-6">
           {loadingKnowledge ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
@@ -1043,9 +1063,9 @@ function KnowledgeTab({
           ) : (
             <div className="space-y-3">
               {knowledge.map((k) => (
-                <div key={k.id} className="flex items-start gap-4 p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all">
+                <div key={k.id} className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all">
                   <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                    className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       k.type === "file"
                         ? "bg-violet-100"
                         : k.type === "url"
@@ -1054,16 +1074,16 @@ function KnowledgeTab({
                     }`}
                   >
                     {k.type === "file" ? (
-                      <FileText className="w-5 h-5 text-violet-600" />
+                      <FileText className="w-4 h-4 lg:w-5 lg:h-5 text-violet-600" />
                     ) : k.type === "url" ? (
-                      <LinkIcon className="w-5 h-5 text-emerald-600" />
+                      <LinkIcon className="w-4 h-4 lg:w-5 lg:h-5 text-emerald-600" />
                     ) : (
-                      <Type className="w-5 h-5 text-amber-600" />
+                      <Type className="w-4 h-4 lg:w-5 lg:h-5 text-amber-600" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-medium text-gray-900 truncate">
+                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                      <h4 className="font-medium text-sm lg:text-base text-gray-900 truncate max-w-full">
                         {k.title || k.original_filename || "(タイトルなし)"}
                       </h4>
                       <StatusBadge status={k.status} />
@@ -1071,12 +1091,12 @@ function KnowledgeTab({
                     {k.source_url && (
                       <p className="text-xs text-gray-500 truncate mb-1">{k.source_url}</p>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                    <div className="flex flex-wrap items-center gap-2 lg:gap-3 text-xs text-gray-400">
                       <span>{new Date(k.created_at).toLocaleString()}</span>
-                      <span className="font-mono">{k.chat_id}</span>
+                      <span className="font-mono truncate">{k.chat_id}</span>
                     </div>
                     {k.error_message && (
-                      <p className="text-xs text-red-600 mt-1">エラー: {k.error_message}</p>
+                      <p className="text-xs text-red-600 mt-1 break-words">エラー: {k.error_message}</p>
                     )}
                   </div>
                 </div>
