@@ -3,12 +3,8 @@
   "version": "1.0.0",
   "description": "Shared constants and types for AI Chat RAG Bot",
   "type": "module",
-  "main": "index.ts",
-  "types": "index.ts",
-  "exports": {
-    ".": "./index.ts",
-    "./constants/ui-defaults": "./constants/ui-defaults.ts"
-  },
+  "main": "constants/ui-defaults.ts",
+  "types": "constants/ui-defaults.ts",
   "keywords": [],
   "author": "",
   "license": "ISC"

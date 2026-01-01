@@ -1,17 +1,12 @@
 /**
  * Shared UI default settings for the chat widget
- *
+ * 
  * This file contains all default values for theme colors, labels, and widget settings.
  * These defaults are used across:
  * - Frontend UI editor (management-web)
  * - Backend API (management-server-hono)
  * - Iframe server (cfw-iframe-server)
  */
-
-// ============================================
-// Base Types (all properties required)
-// Used for default values
-// ============================================
 
 export type ThemeColors = {
   headerBackground: string;
@@ -54,39 +49,6 @@ export type WidgetWindow = {
   height: string;
   mobileWidth: string;
   mobileHeight: string;
-};
-
-// ============================================
-// Partial Types (all properties optional)
-// Used for API requests and form state
-// ============================================
-
-export type PartialThemeColors = Partial<ThemeColors>;
-export type PartialThemeLabels = Partial<ThemeLabels>;
-export type PartialWidgetButton = Partial<WidgetButton>;
-export type PartialWidgetWindow = Partial<WidgetWindow>;
-
-// ============================================
-// Composite Types
-// ============================================
-
-export type ThemeSettings = {
-  colors?: PartialThemeColors;
-  labels?: PartialThemeLabels;
-};
-
-export type WidgetSettings = {
-  button?: PartialWidgetButton;
-  window?: PartialWidgetWindow;
-};
-
-export type ChatUISettings = {
-  id: string;
-  chat_id: string;
-  theme_settings: ThemeSettings;
-  widget_settings: WidgetSettings;
-  created_at: string;
-  updated_at: string;
 };
 
 /**

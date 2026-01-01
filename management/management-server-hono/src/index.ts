@@ -1,14 +1,11 @@
 import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
-import {
-  DEFAULT_COLORS,
-  DEFAULT_LABELS,
-  DEFAULT_WIDGET_BUTTON,
-  DEFAULT_WIDGET_WINDOW,
-  ThemeSettings,
-  WidgetSettings,
-  ChatUISettings,
+import { 
+  DEFAULT_COLORS, 
+  DEFAULT_LABELS, 
+  DEFAULT_WIDGET_BUTTON, 
+  DEFAULT_WIDGET_WINDOW 
 } from '../../../shared/constants/ui-defaults'
 
 type D1Result<T = unknown> = {
@@ -92,7 +89,59 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
-// ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
+type ChatUISettings = {
+  id: string
+  chat_id: string
+  theme_settings: ThemeSettings
+  widget_settings: WidgetSettings
+  created_at: string
+  updated_at: string
+}
+
+type ThemeSettings = {
+  colors?: {
+    headerBackground?: string
+    headerText?: string
+    bodyBackground?: string
+    containerBackground?: string
+    messagesBackground?: string
+    botMessageBackground?: string
+    botMessageText?: string
+    botMessageBorder?: string
+    userMessageBackground?: string
+    userMessageGradientEnd?: string
+    userMessageText?: string
+    inputAreaBackground?: string
+    inputBackground?: string
+    inputText?: string
+    inputBorder?: string
+    inputBorderFocus?: string
+    accentColor?: string
+    accentHover?: string
+  }
+  labels?: {
+    headerTitle?: string
+    inputPlaceholder?: string
+    welcomeMessage?: string
+  }
+}
+
+type WidgetSettings = {
+  button?: {
+    size?: number
+    bottom?: number
+    right?: number
+    color?: string
+    label?: string
+    closeLabel?: string
+  }
+  window?: {
+    width?: string
+    height?: string
+    mobileWidth?: string
+    mobileHeight?: string
+  }
+}
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
