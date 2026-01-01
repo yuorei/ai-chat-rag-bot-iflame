@@ -33,6 +33,11 @@ export function Header({
           title: "デザイン編集",
           description: "チャットUIの外観をカスタマイズします",
         };
+      default:
+        return {
+          title: "管理画面",
+          description: "ダッシュボード",
+        };
     }
   };
 
