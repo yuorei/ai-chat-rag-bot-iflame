@@ -7,13 +7,14 @@ import {
   Book,
   ChevronDown,
   Bot,
+  Palette,
 } from "lucide-react";
 import type { User } from "../../lib/types";
 
 type SidebarProps = {
   user: User | null;
-  activeTab: "chats" | "knowledge";
-  setActiveTab: (tab: "chats" | "knowledge") => void;
+  activeTab: "chats" | "knowledge" | "ui-editor";
+  setActiveTab: (tab: "chats" | "knowledge" | "ui-editor") => void;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   logout: () => void;
@@ -74,6 +75,20 @@ export function Sidebar({
         >
           <Database className="w-5 h-5" />
           ナレッジ投入
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab("ui-editor");
+            setSidebarOpen(false);
+          }}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+            activeTab === "ui-editor"
+              ? "bg-blue-50 text-blue-700 shadow-sm"
+              : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+          }`}
+        >
+          <Palette className="w-5 h-5" />
+          デザイン編集
         </button>
         <Link
           to="/docs"

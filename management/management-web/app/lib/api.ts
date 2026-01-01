@@ -61,6 +61,27 @@ export async function apiFetch<T = any>(
 
 export class AuthError extends Error {}
 
+// --- UI Settings API ---
+import type { ChatUISettings, ThemeSettings, WidgetSettings } from './types';
+
+export async function fetchUISettings(chatId: string): Promise<ChatUISettings> {
+  return apiFetch<ChatUISettings>(`/api/chats/${chatId}/ui-settings`);
+}
+
+export async function updateUISettings(
+  chatId: string,
+  themeSettings: ThemeSettings,
+  widgetSettings: WidgetSettings
+): Promise<ChatUISettings> {
+  return apiFetch<ChatUISettings>(`/api/chats/${chatId}/ui-settings`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      theme_settings: themeSettings,
+      widget_settings: widgetSettings,
+    }),
+  });
+}
+
 declare global {
   interface Window {
     __MGMT_API_BASE__?: string;

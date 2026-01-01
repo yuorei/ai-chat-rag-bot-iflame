@@ -2,7 +2,7 @@ import { Menu } from "lucide-react";
 import type { ChatProfile } from "../../lib/types";
 
 type HeaderProps = {
-  activeTab: "chats" | "knowledge";
+  activeTab: "chats" | "knowledge" | "ui-editor";
   chats: ChatProfile[];
   activeChatId: string;
   setActiveChatId: (id: string) => void;
@@ -29,12 +29,14 @@ export function Header({
           </button>
           <div>
             <h1 className="text-lg lg:text-xl font-bold text-gray-900">
-              {activeTab === "chats" ? "チャット管理" : "ナレッジ投入"}
+              {activeTab === "chats" ? "チャット管理" : activeTab === "knowledge" ? "ナレッジ投入" : "デザイン編集"}
             </h1>
             <p className="text-xs lg:text-sm text-gray-500 hidden sm:block">
               {activeTab === "chats"
                 ? "チャットAIの登録・編集・削除を行います"
-                : "選択したチャットにナレッジを追加します"}
+                : activeTab === "knowledge"
+                  ? "選択したチャットにナレッジを追加します"
+                  : "チャットUIの外観をカスタマイズします"}
             </p>
           </div>
         </div>

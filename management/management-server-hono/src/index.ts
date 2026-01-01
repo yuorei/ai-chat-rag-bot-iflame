@@ -83,6 +83,60 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
+type ChatUISettings = {
+  id: string
+  chat_id: string
+  theme_settings: ThemeSettings
+  widget_settings: WidgetSettings
+  created_at: string
+  updated_at: string
+}
+
+type ThemeSettings = {
+  colors?: {
+    headerBackground?: string
+    headerText?: string
+    bodyBackground?: string
+    containerBackground?: string
+    messagesBackground?: string
+    botMessageBackground?: string
+    botMessageText?: string
+    botMessageBorder?: string
+    userMessageBackground?: string
+    userMessageGradientEnd?: string
+    userMessageText?: string
+    inputAreaBackground?: string
+    inputBackground?: string
+    inputText?: string
+    inputBorder?: string
+    inputBorderFocus?: string
+    accentColor?: string
+    accentHover?: string
+  }
+  labels?: {
+    headerTitle?: string
+    inputPlaceholder?: string
+    welcomeMessage?: string
+  }
+}
+
+type WidgetSettings = {
+  button?: {
+    size?: number
+    bottom?: number
+    right?: number
+    color?: string
+    label?: string
+    closeLabel?: string
+  }
+  window?: {
+    width?: string
+    height?: string
+    mobileWidth?: string
+    mobileHeight?: string
+  }
+}
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
 app.use('*', async (c, next) => {
@@ -308,6 +362,58 @@ app.delete('/api/chats/:id', async (c) => {
       return jsonError(c, 404, 'chat not found')
     }
     return c.json({ deleted: true })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// UI Settings endpoints
+app.get('/api/chats/:id/ui-settings', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = sanitizeAlias(c.req.param('id'))
+
+  try {
+    // 所有者チェック
+    const chat = await fetchChatIfOwned(c, id, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const settings = await fetchUISettings(c, id)
+    return c.json(settings || getDefaultUISettings(id))
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+app.put('/api/chats/:id/ui-settings', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = sanitizeAlias(c.req.param('id'))
+
+  const payload = await readJson<{
+    theme_settings?: ThemeSettings
+    widget_settings?: WidgetSettings
+  }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  try {
+    // 所有者チェック
+    const chat = await fetchChatIfOwned(c, id, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    await upsertUISettings(c, id, payload.theme_settings || {}, payload.widget_settings || {})
+    const settings = await fetchUISettings(c, id)
+    return c.json(settings)
   } catch (err) {
     console.error(err)
     return serverError(c)
@@ -970,4 +1076,108 @@ function pickFirstNonEmpty(values: (FormDataEntryValue | null)[]): FormDataEntry
     if (v instanceof File && v.name) return v
   }
   return null
+}
+
+// --- UI Settings helpers ---
+
+async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings | null> {
+  const row = await c.env.DB.prepare(
+    `SELECT id, chat_id, theme_settings, widget_settings, created_at, updated_at
+     FROM chat_ui_settings
+     WHERE chat_id = ?`
+  )
+    .bind(chatId)
+    .first<any>()
+
+  if (!row) return null
+
+  return {
+    id: row.id as string,
+    chat_id: row.chat_id as string,
+    theme_settings: safeParseJSON(row.theme_settings || '{}') || {},
+    widget_settings: safeParseJSON(row.widget_settings || '{}') || {},
+    created_at: row.created_at as string,
+    updated_at: row.updated_at as string
+  }
+}
+
+function getDefaultUISettings(chatId: string): ChatUISettings {
+  return {
+    id: '',
+    chat_id: chatId,
+    theme_settings: {
+      colors: {
+        headerBackground: '#4a90e2',
+        headerText: '#ffffff',
+        bodyBackground: '#f5f5f5',
+        containerBackground: '#ffffff',
+        messagesBackground: '#ffffff',
+        botMessageBackground: '#f8f9fa',
+        botMessageText: '#333333',
+        botMessageBorder: '#e9ecef',
+        userMessageBackground: '#4a90e2',
+        userMessageGradientEnd: '#357abd',
+        userMessageText: '#ffffff',
+        inputAreaBackground: '#f8f9fa',
+        inputBackground: '#ffffff',
+        inputText: '#333333',
+        inputBorder: '#e9ecef',
+        inputBorderFocus: '#4a90e2',
+        accentColor: '#4a90e2',
+        accentHover: '#357abd'
+      },
+      labels: {
+        headerTitle: 'AI Chat Bot',
+        inputPlaceholder: 'メッセージを入力...',
+        welcomeMessage: 'こんにちは！何かお手伝いできることはありますか？'
+      }
+    },
+    widget_settings: {
+      button: {
+        size: 64,
+        bottom: 20,
+        right: 20,
+        color: '#4a90e2',
+        label: '💬',
+        closeLabel: '✕'
+      },
+      window: {
+        width: '400px',
+        height: '600px',
+        mobileWidth: 'calc(100vw - 20px)',
+        mobileHeight: 'calc(100vh - 150px)'
+      }
+    },
+    created_at: '',
+    updated_at: ''
+  }
+}
+
+async function upsertUISettings(
+  c: any,
+  chatId: string,
+  themeSettings: ThemeSettings,
+  widgetSettings: WidgetSettings
+): Promise<void> {
+  const existing = await fetchUISettings(c, chatId)
+  const themeJson = JSON.stringify(themeSettings)
+  const widgetJson = JSON.stringify(widgetSettings)
+
+  if (existing) {
+    await c.env.DB.prepare(
+      `UPDATE chat_ui_settings
+       SET theme_settings = ?, widget_settings = ?, updated_at = datetime('now')
+       WHERE chat_id = ?`
+    )
+      .bind(themeJson, widgetJson, chatId)
+      .run()
+  } else {
+    const id = crypto.randomUUID()
+    await c.env.DB.prepare(
+      `INSERT INTO chat_ui_settings (id, chat_id, theme_settings, widget_settings, created_at, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`
+    )
+      .bind(id, chatId, themeJson, widgetJson)
+      .run()
+  }
 }
