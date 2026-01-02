@@ -6,6 +6,7 @@ import {
   DEFAULT_LABELS,
   DEFAULT_WIDGET_BUTTON,
   DEFAULT_WIDGET_WINDOW,
+  DEFAULT_WIDGET_BANNER,
   ThemeSettings,
   WidgetSettings,
   ChatUISettings,
@@ -44,6 +45,8 @@ type Bindings = {
   MGMT_COOKIE_SECURE?: string
   MGMT_MAX_UPLOAD_MB?: string
   MGMT_HTTP_TIMEOUT_SEC?: string
+  ASSETS_BUCKET: R2Bucket
+  ASSETS_PUBLIC_URL?: string
 }
 
 type Variables = {
@@ -371,6 +374,121 @@ app.put('/api/chats/:id/ui-settings', async (c) => {
     await upsertUISettings(c, id, payload.theme_settings || {}, payload.widget_settings || {})
     const settings = await fetchUISettings(c, id)
     return c.json(settings)
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// Button Image Upload
+app.post('/api/chats/:id/button-image', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const chatId = sanitizeAlias(c.req.param('id'))
+
+  try {
+    const chat = await fetchChatIfOwned(c, chatId, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const form = await c.req.formData()
+    const image = form.get('image')
+    if (!(image instanceof File)) {
+      return jsonError(c, 400, 'image file is required')
+    }
+
+    const maxSize = 1024 * 1024 // 1MB（変換後のサイズチェック）
+    if (image.size > maxSize) {
+      return jsonError(c, 400, '画像サイズは1MB以下にしてください')
+    }
+
+    // フロントエンドでWebPに変換されるため、主にWebPとSVGを受け付ける
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
+    if (!allowedTypes.includes(image.type)) {
+      return jsonError(c, 400, '無効な画像形式です（対応: png, jpg, gif, webp, svg）')
+    }
+
+    const extMap: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/svg+xml': 'svg'
+    }
+    const ext = extMap[image.type] || 'png'
+
+    // Delete old images first
+    const extensions = ['png', 'jpg', 'gif', 'webp', 'svg']
+    for (const oldExt of extensions) {
+      try {
+        await c.env.ASSETS_BUCKET.delete(`chat/${chatId}/button.${oldExt}`)
+      } catch {
+        // Ignore delete errors
+      }
+    }
+
+    const key = `chat/${chatId}/button.${ext}`
+    await c.env.ASSETS_BUCKET.put(key, await image.arrayBuffer(), {
+      httpMetadata: { contentType: image.type }
+    })
+
+    // Generate public URL
+    const assetsPublicUrl = c.env.ASSETS_PUBLIC_URL
+    if (!assetsPublicUrl) {
+      console.error('ASSETS_PUBLIC_URL is not configured in environment variables')
+      return jsonError(c, 500, 'サーバー設定エラー: ASSETS_PUBLIC_URL が設定されていません')
+    }
+    const publicUrl = `${assetsPublicUrl}/${key}`
+
+    // Update widget_settings with imageUrl
+    const settings = await fetchUISettings(c, chatId) || getDefaultUISettings(chatId)
+    const widgetSettings = settings.widget_settings || {}
+    widgetSettings.button = { ...widgetSettings.button, imageUrl: publicUrl }
+    await upsertUISettings(c, chatId, settings.theme_settings || {}, widgetSettings)
+
+    return c.json({ imageUrl: publicUrl, size: image.size })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// Button Image Delete
+app.delete('/api/chats/:id/button-image', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const chatId = sanitizeAlias(c.req.param('id'))
+
+  try {
+    const chat = await fetchChatIfOwned(c, chatId, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    // Delete all possible image extensions
+    const extensions = ['png', 'jpg', 'gif', 'webp', 'svg']
+    for (const ext of extensions) {
+      try {
+        await c.env.ASSETS_BUCKET.delete(`chat/${chatId}/button.${ext}`)
+      } catch {
+        // Ignore delete errors
+      }
+    }
+
+    // Clear imageUrl from widget_settings
+    const settings = await fetchUISettings(c, chatId)
+    if (settings) {
+      const widgetSettings = settings.widget_settings || {}
+      if (widgetSettings.button) {
+        delete widgetSettings.button.imageUrl
+      }
+      await upsertUISettings(c, chatId, settings.theme_settings || {}, widgetSettings)
+    }
+
+    return c.json({ deleted: true })
   } catch (err) {
     console.error(err)
     return serverError(c)
@@ -1047,7 +1165,8 @@ function getDefaultThemeSettings(): ThemeSettings {
 function getDefaultWidgetSettings(): WidgetSettings {
   return {
     button: DEFAULT_WIDGET_BUTTON,
-    window: DEFAULT_WIDGET_WINDOW
+    window: DEFAULT_WIDGET_WINDOW,
+    banner: DEFAULT_WIDGET_BANNER
   }
 }
 

@@ -4,7 +4,6 @@ import {
   sendSignInLinkToEmail,
   isSignInWithEmailLink,
   signInWithEmailLink,
-  fetchSignInMethodsForEmail,
 } from "firebase/auth";
 import { getFirebaseAuth, getAppUrl } from "../lib/firebase";
 import { getFirebaseErrorMessage } from "../lib/firebase-errors";
@@ -77,13 +76,6 @@ export default function Login() {
     setLoading(true);
     try {
       const auth = getFirebaseAuth();
-      // 既存ユーザーかどうかを確認
-      const signInMethods = await fetchSignInMethodsForEmail(auth, email);
-      if (signInMethods.length === 0) {
-        setError("このメールアドレスは登録されていません。新規登録してください。");
-        setLoading(false);
-        return;
-      }
       await sendSignInLinkToEmail(auth, email, getActionCodeSettings());
       window.localStorage.setItem(EMAIL_STORAGE_KEY, email);
       setEmailSent(true);
