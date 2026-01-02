@@ -399,14 +399,15 @@ app.post('/api/chats/:id/button-image', async (c) => {
       return jsonError(c, 400, 'image file is required')
     }
 
-    const maxSize = 1024 * 1024 // 1MB
+    const maxSize = 1024 * 1024 // 1MB（変換後のサイズチェック）
     if (image.size > maxSize) {
-      return jsonError(c, 400, 'image size must be under 1MB')
+      return jsonError(c, 400, '画像サイズは1MB以下にしてください')
     }
 
+    // フロントエンドでWebPに変換されるため、主にWebPとSVGを受け付ける
     const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml']
     if (!allowedTypes.includes(image.type)) {
-      return jsonError(c, 400, 'invalid image format (allowed: png, jpg, gif, webp, svg)')
+      return jsonError(c, 400, '無効な画像形式です（対応: png, jpg, gif, webp, svg）')
     }
 
     const extMap: Record<string, string> = {
