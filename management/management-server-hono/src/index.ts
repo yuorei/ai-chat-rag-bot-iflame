@@ -435,9 +435,12 @@ app.post('/api/chats/:id/button-image', async (c) => {
     })
 
     // Generate public URL
-    const publicUrl = c.env.ASSETS_PUBLIC_URL
-      ? `${c.env.ASSETS_PUBLIC_URL}/${key}`
-      : `https://ai-chat-assets.${c.env.FIREBASE_PROJECT_ID || 'default'}.r2.cloudflarestorage.com/${key}`
+    const assetsPublicUrl = c.env.ASSETS_PUBLIC_URL
+    if (!assetsPublicUrl) {
+      console.error('ASSETS_PUBLIC_URL is not configured in environment variables')
+      return jsonError(c, 500, 'サーバー設定エラー: ASSETS_PUBLIC_URL が設定されていません')
+    }
+    const publicUrl = `${assetsPublicUrl}/${key}`
 
     // Update widget_settings with imageUrl
     const settings = await fetchUISettings(c, chatId) || getDefaultUISettings(chatId)
