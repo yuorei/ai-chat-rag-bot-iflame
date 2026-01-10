@@ -9,6 +9,7 @@ import { Header } from "../components/dashboard/Header";
 import { NotificationBanner } from "../components/dashboard/NotificationBanner";
 import { ChatsTab, type ChatFormData } from "../components/dashboard/ChatsTab";
 import { KnowledgeTab } from "../components/dashboard/KnowledgeTab";
+import { KnowledgeModal } from "../components/dashboard/KnowledgeModal";
 import { UIEditorTab } from "../components/dashboard/UIEditorTab";
 
 const STORAGE_KEY = "ai-chat-management:lastEditedChatId";
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const [submittingFile, setSubmittingFile] = useState(false);
   const [submittingURL, setSubmittingURL] = useState(false);
   const [submittingText, setSubmittingText] = useState(false);
+  const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeAsset | null>(null);
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
   useEffect(() => {
@@ -349,6 +351,18 @@ export default function Dashboard() {
     }
   };
 
+  const handleViewKnowledge = (knowledge: KnowledgeAsset) => {
+    setSelectedKnowledge(knowledge);
+  };
+
+  const handleCloseKnowledgeModal = () => {
+    setSelectedKnowledge(null);
+  };
+
+  const handleKnowledgeSaved = () => {
+    loadKnowledge();
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       {/* モバイルオーバーレイ */}
@@ -428,6 +442,7 @@ export default function Dashboard() {
               submittingURL={submittingURL}
               submittingText={submittingText}
               deleteKnowledge={deleteKnowledge}
+              onViewKnowledge={handleViewKnowledge}
             />
           )}
           {activeTab === "ui-editor" && (
@@ -440,6 +455,17 @@ export default function Dashboard() {
           )}
         </div>
       </main>
+
+      {/* ナレッジ詳細モーダル */}
+      {selectedKnowledge && (
+        <KnowledgeModal
+          knowledge={selectedKnowledge}
+          onClose={handleCloseKnowledgeModal}
+          onSaved={handleKnowledgeSaved}
+          setError={setError}
+          setStatus={setStatus}
+        />
+      )}
     </div>
   );
 }

@@ -208,6 +208,23 @@ export async function deleteButtonImage(chatId: string): Promise<void> {
   await apiFetch(`/api/chats/${chatId}/button-image`, { method: 'DELETE' });
 }
 
+// --- Knowledge API ---
+import type { KnowledgeAssetWithContent } from './types';
+
+export async function fetchKnowledgeContent(id: string): Promise<KnowledgeAssetWithContent> {
+  return apiFetch<KnowledgeAssetWithContent>(`/api/knowledge/${id}`);
+}
+
+export async function updateKnowledge(
+  id: string,
+  data: { title?: string; text?: string }
+): Promise<{ success: boolean }> {
+  return apiFetch(`/api/knowledge/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Suggestions API ---
 import type { Suggestion } from './types';
 
