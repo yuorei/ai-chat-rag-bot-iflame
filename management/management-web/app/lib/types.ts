@@ -42,3 +42,10 @@ export type User = {
   id: string;
   email: string;
 };
+
+export type Suggestion = {
+  id: string;
+  text: string;
+  order_index: number;
+  enabled: boolean;
+};
