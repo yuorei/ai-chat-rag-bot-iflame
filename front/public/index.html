@@ -327,49 +327,6 @@
         .settings-warning-icon {
             margin-right: 6px;
         }
-
-        /* Suggestion chips (LINE-style quick replies) */
-        .chat-suggestions {
-            display: none;
-            gap: 8px;
-            padding: 10px 20px;
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            background: var(--bg-input-area);
-            border-top: 1px solid var(--border-input-area);
-        }
-
-        .chat-suggestions.show {
-            display: flex;
-        }
-
-        .chat-suggestions::-webkit-scrollbar {
-            display: none;
-        }
-
-        .suggestion-chip {
-            flex-shrink: 0;
-            padding: 8px 16px;
-            border: 2px solid var(--accent);
-            border-radius: 20px;
-            background: var(--bg-container);
-            color: var(--accent);
-            font-size: 14px;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: all 0.2s ease;
-            font-family: inherit;
-        }
-
-        .suggestion-chip:hover {
-            background: var(--accent);
-            color: white;
-        }
-
-        .suggestion-chip:active {
-            transform: scale(0.95);
-        }
     </style>
 </head>
 
@@ -388,10 +345,6 @@
             <div class="message bot-message">
                 <div class="message-content">こんにちは!何でもお気軽に質問してください。</div>
             </div>
-        </div>
-
-        <div class="chat-suggestions" id="chatSuggestions">
-            <!-- Suggestions will be dynamically inserted here -->
         </div>
 
         <div class="chat-input">
@@ -625,57 +578,6 @@
         // UI設定を読み込み
         loadUISettings();
 
-        // サジェストを読み込む
-        async function loadSuggestions() {
-            if (!CHAT_ID) return;
-            try {
-                const response = await fetch(`${API_BASE}/suggestions?chatId=${CHAT_ID}`);
-                if (!response.ok) {
-                    console.warn('[chat] Failed to load suggestions:', response.status);
-                    return;
-                }
-                const { suggestions } = await response.json();
-                renderSuggestions(suggestions);
-            } catch (error) {
-                console.warn('[chat] Failed to load suggestions:', error);
-            }
-        }
-
-        // HTMLエスケープ関数
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // サジェストを表示
-        function renderSuggestions(suggestions) {
-            const container = document.getElementById('chatSuggestions');
-            if (!container) return;
-
-            if (!suggestions || suggestions.length === 0) {
-                container.classList.remove('show');
-                return;
-            }
-
-            container.innerHTML = suggestions.map(s =>
-                `<button class="suggestion-chip" onclick="sendSuggestion('${escapeHtml(s.text).replace(/'/g, "\\'")}')">${escapeHtml(s.text)}</button>`
-            ).join('');
-            container.classList.add('show');
-        }
-
-        // サジェストをクリックしたときの処理
-        function sendSuggestion(text) {
-            const input = document.getElementById('messageInput');
-            if (input) {
-                input.value = text;
-                sendMessage();
-            }
-        }
-
-        // サジェストを読み込み
-        loadSuggestions();
-
         // iframe対応のためのpostMessageリスナー
         window.addEventListener('message', function (event) {
             if (event.data.type === 'sendMessage') {
@@ -690,10 +592,6 @@
             if (event.data.type === 'uiSettingsPreview') {
                 applyThemeSettings(event.data.settings);
                 showSettingsWarning(false); // プレビュー設定が適用されたら警告を非表示
-            }
-            // 管理画面からのサジェストプレビューを受信
-            if (event.data.type === 'suggestionsPreview') {
-                renderSuggestions(event.data.suggestions);
             }
         });
     </script>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
-import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp, Upload, Trash2, AlertCircle, Plus, GripVertical, ToggleLeft, ToggleRight } from "lucide-react";
-import { fetchUISettings, updateUISettings, uploadButtonImage, deleteButtonImage, fetchSuggestions, updateSuggestions } from "../../lib/api";
-import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels, WidgetBanner, Suggestion } from "../../lib/types";
+import { RefreshCw, Save, Monitor, Smartphone, ChevronDown, ChevronUp, Upload, Trash2, AlertCircle } from "lucide-react";
+import { fetchUISettings, updateUISettings, uploadButtonImage, deleteButtonImage } from "../../lib/api";
+import type { ChatProfile, ThemeSettings, WidgetSettings, ThemeColors, ThemeLabels, WidgetBanner } from "../../lib/types";
 import { DEFAULT_COLORS, DEFAULT_LABELS, DEFAULT_WIDGET_BANNER, COLOR_LABELS } from "../../../../../shared/constants/ui-defaults";
 
 // プレビュー用のiframeベースURL（環境変数から取得）
@@ -10,13 +10,6 @@ const PREVIEW_BASE_URL = typeof window !== 'undefined'
     || import.meta.env.VITE_PREVIEW_IFRAME_URL
     || ""
   : "";
-
-// プレビュー用のAPIベースURL（cfw-iframe-server）
-const PREVIEW_API_BASE_URL = typeof window !== 'undefined'
-  ? (window as unknown as { __PREVIEW_API_BASE_URL__?: string }).__PREVIEW_API_BASE_URL__
-    || import.meta.env.VITE_PREVIEW_API_BASE_URL
-    || "https://cfw-iframe-server.yuorei71.workers.dev"
-  : "https://cfw-iframe-server.yuorei71.workers.dev";
 
 type UIEditorTabProps = {
   chats: ChatProfile[];
@@ -47,11 +40,7 @@ export function UIEditorTab({
     colors: true,
     labels: true,
     widget: true,
-    suggestions: true,
   });
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [savingSuggestions, setSavingSuggestions] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [colorErrors, setColorErrors] = useState<Partial<Record<keyof ThemeColors, string>>>({});
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,10 +61,7 @@ export function UIEditorTab({
     if (!activeChatId) return;
     setLoading(true);
     try {
-      const [settings, loadedSuggestions] = await Promise.all([
-        fetchUISettings(activeChatId),
-        fetchSuggestions(activeChatId),
-      ]);
+      const settings = await fetchUISettings(activeChatId);
       const loadedColors = { ...DEFAULT_COLORS, ...settings.theme_settings.colors };
       setColors(loadedColors);
       setLabels({ ...DEFAULT_LABELS, ...settings.theme_settings.labels });
@@ -83,7 +69,6 @@ export function UIEditorTab({
       setBannerSettings({ ...DEFAULT_WIDGET_BANNER, ...settings.widget_settings?.banner });
       setButtonImageUrl(settings.widget_settings?.button?.imageUrl || null);
       setButtonColor(settings.widget_settings?.button?.color || "#4a90e2");
-      setSuggestions(loadedSuggestions);
 
       // 読み込んだ色をバリデーション（undefinedやnullはスキップ）
       const errors: Partial<Record<keyof ThemeColors, string>> = {};
@@ -118,26 +103,9 @@ export function UIEditorTab({
     );
   }, [colors, labels]);
 
-  // サジェストのプレビュー更新
-  const sendSuggestionsPreview = useCallback(() => {
-    if (!iframeRef.current?.contentWindow) return;
-    // enabled かつ text が空でないサジェストのみ送信
-    const enabledSuggestions = suggestions
-      .filter(s => s.enabled && s.text.trim())
-      .map(s => ({ id: s.id, text: s.text }));
-    iframeRef.current.contentWindow.postMessage(
-      { type: "suggestionsPreview", suggestions: enabledSuggestions },
-      "*"
-    );
-  }, [suggestions]);
-
   useEffect(() => {
     sendPreviewUpdate();
   }, [sendPreviewUpdate]);
-
-  useEffect(() => {
-    sendSuggestionsPreview();
-  }, [sendSuggestionsPreview]);
 
   const handleSave = async () => {
     if (!activeChatId) {
@@ -243,74 +211,6 @@ export function UIEditorTab({
 
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
-  };
-
-  // Suggestion handlers
-  const handleAddSuggestion = () => {
-    const newSuggestion: Suggestion = {
-      id: crypto.randomUUID(),
-      text: "",
-      order_index: suggestions.length,
-      enabled: true,
-    };
-    setSuggestions([...suggestions, newSuggestion]);
-  };
-
-  const handleSuggestionTextChange = (id: string, text: string) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, text } : s))
-    );
-  };
-
-  const handleSuggestionToggle = (id: string) => {
-    setSuggestions((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s))
-    );
-  };
-
-  const handleSuggestionDelete = (id: string) => {
-    setSuggestions((prev) => {
-      const filtered = prev.filter((s) => s.id !== id);
-      // Reorder indices
-      return filtered.map((s, idx) => ({ ...s, order_index: idx }));
-    });
-  };
-
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (draggedIndex === null || draggedIndex === index) return;
-
-    const newSuggestions = [...suggestions];
-    const [draggedItem] = newSuggestions.splice(draggedIndex, 1);
-    newSuggestions.splice(index, 0, draggedItem);
-
-    // Update order_index
-    const reordered = newSuggestions.map((s, idx) => ({ ...s, order_index: idx }));
-    setSuggestions(reordered);
-    setDraggedIndex(index);
-  };
-
-  const handleDragEnd = () => {
-    setDraggedIndex(null);
-  };
-
-  const handleSaveSuggestions = async () => {
-    if (!activeChatId) return;
-    setSavingSuggestions(true);
-    setError(null);
-    try {
-      const updated = await updateSuggestions(activeChatId, suggestions);
-      setSuggestions(updated);
-      setStatus("サジェストを保存しました");
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setSavingSuggestions(false);
-    }
   };
 
   if (!activeChatId) {
@@ -690,115 +590,6 @@ export function UIEditorTab({
             </div>
           )}
         </div>
-
-        {/* Suggestions Settings */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <button
-            onClick={() => toggleSection("suggestions")}
-            className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition-colors"
-          >
-            <h3 className="font-semibold text-gray-900">サジェスト設定</h3>
-            {expandedSections.suggestions ? (
-              <ChevronUp className="w-5 h-5 text-gray-500" />
-            ) : (
-              <ChevronDown className="w-5 h-5 text-gray-500" />
-            )}
-          </button>
-          {expandedSections.suggestions && (
-            <div className="p-4 pt-0 space-y-4">
-              <p className="text-sm text-gray-500">
-                ユーザーに表示するクイックリプライを設定します。ドラッグ&ドロップで並び替えできます。
-              </p>
-
-              {/* Suggestion List */}
-              <div className="space-y-2">
-                {suggestions.map((suggestion, index) => (
-                  <div
-                    key={suggestion.id}
-                    draggable
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 p-3 bg-gray-50 rounded-lg border ${
-                      draggedIndex === index ? "border-blue-400 bg-blue-50" : "border-gray-200"
-                    } transition-colors`}
-                  >
-                    <GripVertical className="w-4 h-4 text-gray-400 cursor-grab flex-shrink-0" />
-                    <input
-                      type="text"
-                      value={suggestion.text}
-                      onChange={(e) => handleSuggestionTextChange(suggestion.id, e.target.value)}
-                      placeholder="サジェストテキストを入力..."
-                      className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    />
-                    <button
-                      onClick={() => handleSuggestionToggle(suggestion.id)}
-                      className={`p-1.5 rounded-lg transition-colors ${
-                        suggestion.enabled
-                          ? "text-green-600 hover:bg-green-50"
-                          : "text-gray-400 hover:bg-gray-100"
-                      }`}
-                      title={suggestion.enabled ? "有効" : "無効"}
-                    >
-                      {suggestion.enabled ? (
-                        <ToggleRight className="w-5 h-5" />
-                      ) : (
-                        <ToggleLeft className="w-5 h-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleSuggestionDelete(suggestion.id)}
-                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                      title="削除"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add Button */}
-              <button
-                onClick={handleAddSuggestion}
-                className="flex items-center gap-2 w-full px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg transition-colors"
-              >
-                <Plus className="w-4 h-4" />
-                サジェストを追加
-              </button>
-
-              {/* Save Button */}
-              <div className="pt-2 border-t border-gray-200">
-                <button
-                  onClick={handleSaveSuggestions}
-                  disabled={savingSuggestions}
-                  className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" />
-                  {savingSuggestions ? "保存中..." : "サジェストを保存"}
-                </button>
-              </div>
-
-              {/* Preview */}
-              {suggestions.filter(s => s.enabled && s.text).length > 0 && (
-                <div className="pt-4 border-t border-gray-200">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    プレビュー
-                  </label>
-                  <div className="flex gap-2 flex-wrap p-3 bg-gray-100 rounded-lg">
-                    {suggestions.filter(s => s.enabled && s.text).map((s) => (
-                      <span
-                        key={s.id}
-                        className="px-3 py-1.5 text-sm border-2 border-blue-500 text-blue-600 bg-white rounded-full whitespace-nowrap"
-                      >
-                        {s.text}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Right Panel - Preview */}
@@ -843,13 +634,10 @@ export function UIEditorTab({
             >
               <iframe
                 ref={iframeRef}
-                src={`${PREVIEW_BASE_URL}/index.html?chatId=${activeChatId}&preview=true&apiBase=${encodeURIComponent(PREVIEW_API_BASE_URL)}`}
+                src={`${PREVIEW_BASE_URL}/index.html?chatId=${activeChatId}&preview=true`}
                 className="w-full h-full border-0"
                 title="Chat Preview"
-                onLoad={() => {
-                  sendPreviewUpdate();
-                  sendSuggestionsPreview();
-                }}
+                onLoad={sendPreviewUpdate}
               />
             </div>
           </div>

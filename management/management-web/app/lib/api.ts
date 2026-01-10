@@ -208,25 +208,6 @@ export async function deleteButtonImage(chatId: string): Promise<void> {
   await apiFetch(`/api/chats/${chatId}/button-image`, { method: 'DELETE' });
 }
 
-// --- Suggestions API ---
-import type { Suggestion } from './types';
-
-export async function fetchSuggestions(chatId: string): Promise<Suggestion[]> {
-  const data = await apiFetch<{ suggestions: Suggestion[] }>(`/api/chats/${chatId}/suggestions`);
-  return data.suggestions || [];
-}
-
-export async function updateSuggestions(
-  chatId: string,
-  suggestions: Suggestion[]
-): Promise<Suggestion[]> {
-  const data = await apiFetch<{ suggestions: Suggestion[] }>(`/api/chats/${chatId}/suggestions`, {
-    method: 'PUT',
-    body: JSON.stringify({ suggestions }),
-  });
-  return data.suggestions || [];
-}
-
 declare global {
   interface Window {
     __MGMT_API_BASE__?: string;
