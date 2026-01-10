@@ -653,6 +653,10 @@ app.post('/api/knowledge/files', async (c) => {
     try {
       const backend = await forwardFileToFlask(c, chat.id, file)
       await updateKnowledgeStatus(c, recordId, 'succeeded', '', file.name)
+      // Save qdrant_point_id from Flask response
+      if (backend && backend.qdrant_point_id) {
+        await updateKnowledgeQdrantPointId(c, recordId, backend.qdrant_point_id)
+      }
       return c.json({ id: recordId, status: 'succeeded', backend })
     } catch (err) {
       await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, file.name)
@@ -706,6 +710,10 @@ app.post('/api/knowledge/urls', async (c) => {
         title: payload.title || ''
       })
       await updateKnowledgeStatus(c, recordId, 'succeeded', '', '')
+      // Save qdrant_point_id from Flask response
+      if (backend && backend.qdrant_point_id) {
+        await updateKnowledgeQdrantPointId(c, recordId, backend.qdrant_point_id)
+      }
       return c.json({ id: recordId, status: 'succeeded', backend })
     } catch (err) {
       await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, '')
@@ -763,11 +771,199 @@ app.post('/api/knowledge/texts', async (c) => {
         tags: payload.tags || []
       })
       await updateKnowledgeStatus(c, recordId, 'succeeded', '', '')
+      // Save qdrant_point_id from Flask response
+      if (backend && backend.qdrant_point_id) {
+        await updateKnowledgeQdrantPointId(c, recordId, backend.qdrant_point_id)
+      }
       return c.json({ id: recordId, status: 'succeeded', backend })
     } catch (err) {
       await updateKnowledgeStatus(c, recordId, 'failed', (err as Error).message, '')
       return jsonError(c, 502, 'Pythonサーバーへの送信に失敗しました: ' + (err as Error).message)
     }
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// GET /api/knowledge/:id - Get knowledge content
+app.get('/api/knowledge/:id', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = c.req.param('id')
+
+  try {
+    // Get D1 record with ownership check
+    const row = await c.env.DB.prepare(
+      `SELECT ka.*, cp.owner_user_id
+       FROM knowledge_assets ka
+       JOIN chat_profiles cp ON cp.id = ka.chat_id
+       WHERE ka.id = ? AND cp.owner_user_id = ?`
+    ).bind(id, user.uid).first<any>()
+
+    if (!row) {
+      return jsonError(c, 404, 'knowledge not found')
+    }
+
+    if (!row.qdrant_point_id) {
+      // Return metadata only if no qdrant_point_id
+      return c.json({
+        id: row.id,
+        chat_id: row.chat_id,
+        type: row.type,
+        title: row.title || '',
+        text: null,
+        source_url: row.source_url || undefined,
+        original_filename: row.original_filename || undefined,
+        status: row.status,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        editable: false,
+      })
+    }
+
+    // Fetch content from Flask/Qdrant
+    const cfg = getConfig(c)
+    try {
+      const res = await fetch(
+        `${cfg.flaskBaseURL}/api/knowledge/${row.qdrant_point_id}`,
+        { headers: cfg.adminAPIKey ? { 'X-Admin-API-Key': cfg.adminAPIKey } : {} }
+      )
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        return jsonError(c, res.status, (err as any).error || 'Failed to fetch knowledge content')
+      }
+
+      const content = await res.json() as { title?: string; text?: string }
+      return c.json({
+        id: row.id,
+        chat_id: row.chat_id,
+        type: row.type,
+        title: content.title || row.title || '',
+        text: content.text || '',
+        source_url: row.source_url || undefined,
+        original_filename: row.original_filename || undefined,
+        status: row.status,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        editable: true,
+      })
+    } catch (fetchErr) {
+      console.error('Failed to fetch from Flask:', fetchErr)
+      return jsonError(c, 502, 'Failed to fetch knowledge content from backend')
+    }
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// PUT /api/knowledge/:id - Update knowledge
+app.put('/api/knowledge/:id', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = c.req.param('id')
+
+  const payload = await readJson<{ title?: string; text?: string }>(c)
+  if (!payload) {
+    return jsonError(c, 400, 'invalid json')
+  }
+
+  try {
+    // Get D1 record with ownership check
+    const row = await c.env.DB.prepare(
+      `SELECT ka.*, cp.owner_user_id
+       FROM knowledge_assets ka
+       JOIN chat_profiles cp ON cp.id = ka.chat_id
+       WHERE ka.id = ? AND cp.owner_user_id = ?`
+    ).bind(id, user.uid).first<any>()
+
+    if (!row) {
+      return jsonError(c, 404, 'knowledge not found')
+    }
+
+    if (!row.qdrant_point_id) {
+      return jsonError(c, 400, 'Cannot update knowledge without qdrant_point_id')
+    }
+
+    // Update in Qdrant via Flask
+    const cfg = getConfig(c)
+    const updateRes = await fetch(`${cfg.flaskBaseURL}/api/knowledge/${row.qdrant_point_id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cfg.adminAPIKey ? { 'X-Admin-API-Key': cfg.adminAPIKey } : {}),
+      },
+      body: JSON.stringify({
+        title: payload.title,
+        text: payload.text,
+        chat_id: row.chat_id,
+      }),
+    })
+
+    if (!updateRes.ok) {
+      const err = await updateRes.json().catch(() => ({}))
+      return jsonError(c, updateRes.status, (err as any).error || 'Update failed')
+    }
+
+    // Update D1 metadata if title changed
+    if (payload.title !== undefined) {
+      await c.env.DB.prepare(
+        `UPDATE knowledge_assets SET title = ?, updated_at = datetime('now') WHERE id = ?`
+      ).bind(payload.title, id).run()
+    }
+
+    return c.json({ success: true, updated: true })
+  } catch (err) {
+    console.error(err)
+    return serverError(c)
+  }
+})
+
+// DELETE /api/knowledge/:id - Delete knowledge
+app.delete('/api/knowledge/:id', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+  const id = c.req.param('id')
+
+  try {
+    // Get D1 record with ownership check
+    const row = await c.env.DB.prepare(
+      `SELECT ka.*, cp.owner_user_id
+       FROM knowledge_assets ka
+       JOIN chat_profiles cp ON cp.id = ka.chat_id
+       WHERE ka.id = ? AND cp.owner_user_id = ?`
+    ).bind(id, user.uid).first<any>()
+
+    if (!row) {
+      return jsonError(c, 404, 'knowledge not found')
+    }
+
+    // Delete from Qdrant if point ID exists
+    if (row.qdrant_point_id) {
+      const cfg = getConfig(c)
+      try {
+        await fetch(
+          `${cfg.flaskBaseURL}/api/knowledge/${row.qdrant_point_id}?chat_id=${row.chat_id}`,
+          {
+            method: 'DELETE',
+            headers: cfg.adminAPIKey ? { 'X-Admin-API-Key': cfg.adminAPIKey } : {},
+          }
+        )
+      } catch (e) {
+        console.error('Failed to delete from Qdrant:', e)
+        // Continue to delete from D1 anyway
+      }
+    }
+
+    // Delete from D1
+    await c.env.DB.prepare('DELETE FROM knowledge_assets WHERE id = ?').bind(id).run()
+
+    return c.json({ deleted: true })
   } catch (err) {
     console.error(err)
     return serverError(c)
@@ -1095,16 +1291,32 @@ async function insertKnowledge(
   srcURL: string,
   origName: string,
   storagePath: string,
-  status: string
+  status: string,
+  qdrantPointId?: string
 ): Promise<string> {
   const id = crypto.randomUUID()
   await c.env.DB.prepare(
-    `INSERT INTO knowledge_assets (id, chat_id, type, title, source_url, original_filename, storage_path, status, created_at, updated_at)
-     VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, datetime('now'), datetime('now'))`
+    `INSERT INTO knowledge_assets (id, chat_id, type, title, source_url, original_filename, storage_path, status, qdrant_point_id, created_at, updated_at)
+     VALUES (?, ?, ?, NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), ?, NULLIF(?, ''), datetime('now'), datetime('now'))`
   )
-    .bind(id, chatId, kind, title, srcURL, origName, storagePath, status)
+    .bind(id, chatId, kind, title, srcURL, origName, storagePath, status, qdrantPointId || '')
     .run()
   return id
+}
+
+async function updateKnowledgeQdrantPointId(
+  c: any,
+  id: string,
+  qdrantPointId: string
+): Promise<void> {
+  await c.env.DB.prepare(
+    `UPDATE knowledge_assets
+     SET qdrant_point_id = ?,
+         updated_at = datetime('now')
+     WHERE id = ?`
+  )
+    .bind(qdrantPointId, id)
+    .run()
 }
 
 async function updateKnowledgeStatus(

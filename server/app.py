@@ -5,7 +5,7 @@ import time
 from flask import Flask, jsonify, g, request
 from flask_cors import CORS
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, PayloadSchemaType, VectorParams
+from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, PayloadSchemaType, PointIdsList, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
 
 import settings
@@ -349,6 +349,149 @@ def fetch_url():
 
     except Exception as e:
         return jsonify({'error': f'URL取得エラー: {str(e)}'}), 500
+
+
+@app.route('/api/knowledge/<point_id>', methods=['GET'])
+@require_admin_auth
+def get_knowledge(point_id):
+    """Retrieve a single knowledge point from Qdrant by ID."""
+    if not qdrant_client:
+        return jsonify({'error': 'Qdrant not available'}), 500
+
+    try:
+        points = qdrant_client.retrieve(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            ids=[point_id],
+            with_payload=True,
+            with_vectors=False
+        )
+        if not points:
+            return jsonify({'error': 'Knowledge not found'}), 404
+
+        point = points[0]
+        return jsonify({
+            'id': point_id,
+            'title': point.payload.get('title', ''),
+            'text': point.payload.get('text', ''),
+            'type': point.payload.get('type', ''),
+            'source': point.payload.get('source', ''),
+            'chat_id': point.payload.get('chat_id', ''),
+            'timestamp': point.payload.get('timestamp', ''),
+            'category': point.payload.get('category', ''),
+            'tags': point.payload.get('tags', []),
+        })
+    except Exception as e:
+        print(f"Failed to retrieve knowledge: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/<point_id>', methods=['PUT'])
+@require_admin_auth
+def update_knowledge(point_id):
+    """Update a knowledge point's title and/or text."""
+    data = request.get_json() or {}
+    new_title = data.get('title')
+    new_text = data.get('text')
+    chat_id = data.get('chat_id')
+
+    if not chat_id:
+        return jsonify({'error': 'chat_id is required'}), 400
+    if not domain_registry.resolve(chat_id):
+        return jsonify({'error': 'Unknown chat_id'}), 404
+
+    if not qdrant_client or not embedding_model:
+        return jsonify({'error': 'Qdrant not available'}), 500
+
+    try:
+        # Retrieve existing point
+        points = qdrant_client.retrieve(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            ids=[point_id],
+            with_payload=True,
+            with_vectors=True
+        )
+        if not points:
+            return jsonify({'error': 'Knowledge not found'}), 404
+
+        point = points[0]
+        current_payload = point.payload
+
+        # Verify ownership
+        if current_payload.get('chat_id') != chat_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        # Update payload
+        updated_payload = {**current_payload}
+        if new_title is not None:
+            updated_payload['title'] = new_title
+
+        # If text changed, re-compute vector
+        current_text = current_payload.get('text', '')
+        if new_text is not None and new_text != current_text:
+            updated_payload['text'] = new_text
+            new_vector = embedding_model.encode(new_text).tolist()
+        else:
+            new_vector = point.vector
+
+        updated_payload['timestamp'] = time.time()
+
+        # Upsert with same ID
+        updated_point = PointStruct(
+            id=point_id,
+            vector=new_vector,
+            payload=updated_payload,
+        )
+        qdrant_client.upsert(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            points=[updated_point],
+        )
+
+        return jsonify({
+            'success': True,
+            'message': 'Knowledge updated',
+            'id': point_id
+        })
+    except Exception as e:
+        print(f"Failed to update knowledge: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/knowledge/<point_id>', methods=['DELETE'])
+@require_admin_auth
+def delete_knowledge(point_id):
+    """Delete a knowledge point from Qdrant."""
+    chat_id = request.args.get('chat_id')
+
+    if not chat_id:
+        return jsonify({'error': 'chat_id is required'}), 400
+    if not domain_registry.resolve(chat_id):
+        return jsonify({'error': 'Unknown chat_id'}), 404
+
+    if not qdrant_client:
+        return jsonify({'error': 'Qdrant not available'}), 500
+
+    try:
+        # Verify ownership first
+        points = qdrant_client.retrieve(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            ids=[point_id],
+            with_payload=True,
+            with_vectors=False
+        )
+        if not points:
+            return jsonify({'error': 'Knowledge not found'}), 404
+
+        if points[0].payload.get('chat_id') != chat_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        qdrant_client.delete(
+            collection_name=settings.QDRANT_COLLECTION_NAME,
+            points_selector=PointIdsList(points=[point_id])
+        )
+        return jsonify({'success': True, 'deleted': True})
+    except Exception as e:
+        print(f"Failed to delete knowledge: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/health')

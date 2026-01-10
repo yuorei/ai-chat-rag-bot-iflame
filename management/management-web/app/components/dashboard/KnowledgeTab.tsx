@@ -35,6 +35,7 @@ type KnowledgeTabProps = {
   submittingURL: boolean;
   submittingText: boolean;
   deleteKnowledge: (id: string) => void;
+  onViewKnowledge: (knowledge: KnowledgeAsset) => void;
 };
 
 export function KnowledgeTab({
@@ -56,6 +57,7 @@ export function KnowledgeTab({
   submittingURL,
   submittingText,
   deleteKnowledge,
+  onViewKnowledge,
 }: KnowledgeTabProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [knowledgeSearch, setKnowledgeSearch] = useState("");
@@ -416,7 +418,8 @@ export function KnowledgeTab({
               {filteredKnowledge.map((k) => (
                 <div
                   key={k.id}
-                  className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all group"
+                  onClick={() => onViewKnowledge(k)}
+                  className="flex items-start gap-3 lg:gap-4 p-3 lg:p-4 rounded-xl bg-gray-50 hover:bg-gray-100 transition-all group cursor-pointer"
                 >
                   <div
                     className={`w-8 h-8 lg:w-10 lg:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -457,7 +460,10 @@ export function KnowledgeTab({
                   </div>
                   {/* 削除ボタン */}
                   <button
-                    onClick={() => deleteKnowledge(k.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteKnowledge(k.id);
+                    }}
                     className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 lg:opacity-100 flex-shrink-0"
                     title="削除"
                   >

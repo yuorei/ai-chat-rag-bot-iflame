@@ -136,8 +136,9 @@ def fetch_url_content(url):
 
 
 def save_knowledge_to_qdrant(qdrant_client, vector, payload):
+    point_id = str(uuid.uuid4())
     point = PointStruct(
-        id=str(uuid.uuid4()),
+        id=point_id,
         vector=vector,
         payload=payload,
     )
@@ -146,6 +147,7 @@ def save_knowledge_to_qdrant(qdrant_client, vector, payload):
         collection_name=settings.QDRANT_COLLECTION_NAME,
         points=[point],
     )
+    return point_id
 
 
 def handle_file_upload(file_storage, chat_id, qdrant_client, embedding_model):
@@ -185,7 +187,7 @@ def handle_file_upload(file_storage, chat_id, qdrant_client, embedding_model):
             "timestamp": time.time(),
         }
 
-        save_knowledge_to_qdrant(qdrant_client, vector, payload)
+        point_id = save_knowledge_to_qdrant(qdrant_client, vector, payload)
 
         preview = extracted_text[:500] + ('...' if len(extracted_text) > 500 else '')
         return {
@@ -193,6 +195,7 @@ def handle_file_upload(file_storage, chat_id, qdrant_client, embedding_model):
             'message': f'ファイル "{filename}" が正常にアップロードされました',
             'extracted_length': len(extracted_text),
             'extracted_text': preview,
+            'qdrant_point_id': point_id,
         }, 200
     finally:
         try:
@@ -223,12 +226,13 @@ def handle_url_fetch(url, title, chat_id, qdrant_client, embedding_model):
         "timestamp": time.time(),
     }
 
-    save_knowledge_to_qdrant(qdrant_client, vector, payload)
+    point_id = save_knowledge_to_qdrant(qdrant_client, vector, payload)
 
     return {
         'success': True,
         'message': f'URL "{resolved_title}" からの情報が正常に保存されました',
         'extracted_length': len(content),
+        'qdrant_point_id': point_id,
     }, 200
 
 
@@ -245,5 +249,5 @@ def add_manual_knowledge(content, title, chat_id, category, tags, qdrant_client,
         "source": "manual",
     }
 
-    save_knowledge_to_qdrant(qdrant_client, knowledge_vector, payload)
-    return {'success': True, 'message': '知識が追加されました'}, 200
+    point_id = save_knowledge_to_qdrant(qdrant_client, knowledge_vector, payload)
+    return {'success': True, 'message': '知識が追加されました', 'qdrant_point_id': point_id}, 200
