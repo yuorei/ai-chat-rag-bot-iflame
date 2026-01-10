@@ -50,34 +50,13 @@ class AIAgent:
 
         return f"{base_message}\n\n【参考情報（ナレッジからの抜粋）】\n{snippet}"
 
-    def think_and_respond(self, query, context="", system_prompt=None, only_page_context=False):
+    def think_and_respond(self, query, context="", system_prompt=None):
         if not context.strip():
-            if only_page_context:
-                return "現在のページに関する情報が見つかりませんでした。ページの内容を確認して再度お試しください。"
             return "申し訳ありませんが、お尋ねの件について保存されている情報が見つかりませんでした。もう少し詳しく教えていただけますでしょうか？"
 
         prompt_header = system_prompt if system_prompt else self.system_prompt
 
-        # ページのみモードの場合、プロンプトを変更
-        if only_page_context:
-            prompt = f"""
-        {prompt_header}
-
-        【重要な指示】
-        - 以下に提供された「ページの情報」のみを使って回答してください
-        - ページに記載されていない情報については「このページには記載されていません」と回答してください
-        - ページの内容を正確に要約・説明してください
-
-        【ページの情報】
-        {context}
-
-        【ユーザーの質問】
-        {query}
-
-        上記のページ情報のみに基づいて、簡潔で分かりやすく回答してください。
-        """
-        else:
-            prompt = f"""
+        prompt = f"""
         {prompt_header}
 
         【利用可能な情報】
