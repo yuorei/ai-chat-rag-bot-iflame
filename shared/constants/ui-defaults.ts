@@ -47,6 +47,13 @@ export type WidgetButton = {
   color: string;
   label: string;
   closeLabel: string;
+  imageUrl?: string;
+};
+
+export type WidgetBanner = {
+  text: string;
+  backgroundColor: string;
+  textColor: string;
 };
 
 export type WidgetWindow = {
@@ -65,6 +72,7 @@ export type PartialThemeColors = Partial<ThemeColors>;
 export type PartialThemeLabels = Partial<ThemeLabels>;
 export type PartialWidgetButton = Partial<WidgetButton>;
 export type PartialWidgetWindow = Partial<WidgetWindow>;
+export type PartialWidgetBanner = Partial<WidgetBanner>;
 
 // ============================================
 // Composite Types
@@ -78,6 +86,7 @@ export type ThemeSettings = {
 export type WidgetSettings = {
   button?: PartialWidgetButton;
   window?: PartialWidgetWindow;
+  banner?: PartialWidgetBanner;
 };
 
 export type ChatUISettings = {
@@ -142,6 +151,15 @@ export const DEFAULT_WIDGET_WINDOW: WidgetWindow = {
   height: "600px",
   mobileWidth: "calc(100vw - 20px)",
   mobileHeight: "calc(100vh - 150px)",
+};
+
+/**
+ * Default widget banner configuration
+ */
+export const DEFAULT_WIDGET_BANNER: WidgetBanner = {
+  text: "チャットで質問できます！",
+  backgroundColor: "#4dd0e1",
+  textColor: "#000000",
 };
 
 /**

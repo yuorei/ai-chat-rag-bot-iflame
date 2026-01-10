@@ -1,10 +1,11 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
-import { 
-  DEFAULT_COLORS, 
-  DEFAULT_LABELS, 
-  DEFAULT_WIDGET_BUTTON, 
-  DEFAULT_WIDGET_WINDOW 
+import {
+  DEFAULT_COLORS,
+  DEFAULT_LABELS,
+  DEFAULT_WIDGET_BUTTON,
+  DEFAULT_WIDGET_WINDOW,
+  DEFAULT_WIDGET_BANNER
 } from '../../shared/constants/ui-defaults'
 
 // ---------------------------------------------------------------------------
@@ -359,7 +360,8 @@ app.get('/ui-settings', async (c) => {
         },
         widget: {
           button: DEFAULT_WIDGET_BUTTON,
-          window: DEFAULT_WIDGET_WINDOW
+          window: DEFAULT_WIDGET_WINDOW,
+          banner: DEFAULT_WIDGET_BANNER
         }
       })
     }
@@ -371,7 +373,8 @@ app.get('/ui-settings', async (c) => {
       },
       widget: safeParseJSON(settings.widget_settings) || {
         button: DEFAULT_WIDGET_BUTTON,
-        window: DEFAULT_WIDGET_WINDOW
+        window: DEFAULT_WIDGET_WINDOW,
+        banner: DEFAULT_WIDGET_BANNER
       }
     })
   } catch (error) {
