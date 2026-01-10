@@ -11,6 +11,8 @@ import { ChatsTab, type ChatFormData } from "../components/dashboard/ChatsTab";
 import { KnowledgeTab } from "../components/dashboard/KnowledgeTab";
 import { UIEditorTab } from "../components/dashboard/UIEditorTab";
 
+const STORAGE_KEY = "ai-chat-management:lastEditedChatId";
+
 export function meta() {
   return [
     { title: "ダッシュボード | Management" },
@@ -70,6 +72,14 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // activeChatIdをlocalStorageに保存
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (activeChatId) {
+      localStorage.setItem(STORAGE_KEY, activeChatId);
+    }
+  }, [activeChatId]);
+
   const loadChats = async () => {
     setLoadingChats(true);
     setError(null);
@@ -78,9 +88,18 @@ export default function Dashboard() {
       const list = res.chats || [];
       setChats(list);
       setActiveChatId((prev) => {
+        // 既存のactiveChatIdがあれば維持
         if (prev && list.some((c) => c.id === prev)) {
           return prev;
         }
+        // localStorageから復元を試みる
+        if (typeof window !== "undefined") {
+          const savedId = localStorage.getItem(STORAGE_KEY);
+          if (savedId && list.some((c) => c.id === savedId)) {
+            return savedId;
+          }
+        }
+        // 最初のチャットを選択
         return list[0]?.id || "";
       });
     } catch (err) {
@@ -348,6 +367,10 @@ export default function Dashboard() {
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         logout={logout}
+        chats={chats}
+        activeChatId={activeChatId}
+        setActiveChatId={setActiveChatId}
+        loadingChats={loadingChats}
       />
 
       {/* メインコンテンツ */}
@@ -355,9 +378,6 @@ export default function Dashboard() {
         {/* ヘッダー */}
         <Header
           activeTab={activeTab}
-          chats={chats}
-          activeChatId={activeChatId}
-          setActiveChatId={setActiveChatId}
           setSidebarOpen={setSidebarOpen}
         />
 
@@ -414,7 +434,6 @@ export default function Dashboard() {
             <UIEditorTab
               chats={chats}
               activeChatId={activeChatId}
-              setActiveChatId={setActiveChatId}
               setStatus={setStatus}
               setError={setError}
             />
