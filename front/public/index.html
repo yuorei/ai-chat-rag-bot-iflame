@@ -699,9 +699,18 @@
                 return;
             }
 
-            container.innerHTML = suggestions.map(s =>
-                `<button class="suggestion-chip" onclick="sendSuggestion('${escapeHtml(s.text).replace(/'/g, "\\'")}')">${escapeHtml(s.text)}</button>`
-            ).join('');
+            // XSS対策: data属性とaddEventListenerを使用
+            container.innerHTML = '';
+            suggestions.forEach(s => {
+                const button = document.createElement('button');
+                button.className = 'suggestion-chip';
+                button.textContent = s.text;
+                button.dataset.text = s.text;
+                button.addEventListener('click', function() {
+                    sendSuggestion(this.dataset.text);
+                });
+                container.appendChild(button);
+            });
             container.classList.add('show');
         }
 

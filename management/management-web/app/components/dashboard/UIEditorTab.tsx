@@ -52,6 +52,7 @@ export function UIEditorTab({
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [savingSuggestions, setSavingSuggestions] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [colorErrors, setColorErrors] = useState<Partial<Record<keyof ThemeColors, string>>>({});
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -210,7 +211,7 @@ export function UIEditorTab({
     e.target.value = "";
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleImageDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith("image/")) {
@@ -276,14 +277,24 @@ export function UIEditorTab({
     });
   };
 
-  const handleDragStart = (index: number) => {
+  const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = "move";
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (draggedIndex === null || draggedIndex === index) return;
+    // 視覚的なフィードバックのためにターゲットインデックスのみを更新
+    setDropTargetIndex(index);
+  };
+
+  const handleDrop = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
     if (draggedIndex === null || draggedIndex === index) return;
 
+    // ドロップ時に一度だけ並び替えを実行
     const newSuggestions = [...suggestions];
     const [draggedItem] = newSuggestions.splice(draggedIndex, 1);
     newSuggestions.splice(index, 0, draggedItem);
@@ -291,11 +302,11 @@ export function UIEditorTab({
     // Update order_index
     const reordered = newSuggestions.map((s, idx) => ({ ...s, order_index: idx }));
     setSuggestions(reordered);
-    setDraggedIndex(index);
   };
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
+    setDropTargetIndex(null);
   };
 
   const handleSaveSuggestions = async () => {
@@ -533,7 +544,7 @@ export function UIEditorTab({
                 ) : (
                   <div
                     className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
-                    onDrop={handleDrop}
+                    onDrop={handleImageDrop}
                     onDragOver={(e) => e.preventDefault()}
                     onClick={() => fileInputRef.current?.click()}
                   >
@@ -716,11 +727,16 @@ export function UIEditorTab({
                   <div
                     key={suggestion.id}
                     draggable
-                    onDragStart={() => handleDragStart(index)}
+                    onDragStart={(e) => handleDragStart(e, index)}
                     onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
                     onDragEnd={handleDragEnd}
                     className={`flex items-center gap-2 p-3 bg-gray-50 rounded-lg border ${
-                      draggedIndex === index ? "border-blue-400 bg-blue-50" : "border-gray-200"
+                      draggedIndex === index
+                        ? "border-blue-400 bg-blue-50 opacity-50"
+                        : dropTargetIndex === index
+                        ? "border-green-400 bg-green-50"
+                        : "border-gray-200"
                     } transition-colors`}
                   >
                     <GripVertical className="w-4 h-4 text-gray-400 cursor-grab flex-shrink-0" />
