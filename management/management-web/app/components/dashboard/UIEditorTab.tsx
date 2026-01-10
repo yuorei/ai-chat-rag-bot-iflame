@@ -55,6 +55,8 @@ export function UIEditorTab({
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   // カラーバリデーション関数
   const validateColor = (color: string | undefined): string | null => {
@@ -138,6 +140,50 @@ export function UIEditorTab({
   useEffect(() => {
     sendSuggestionsPreview();
   }, [sendSuggestionsPreview]);
+
+  // モーダルのキーボード操作とフォーカス管理
+  useEffect(() => {
+    if (!showResetConfirm) return;
+
+    // モーダルが開いたら最初のボタンにフォーカス
+    if (cancelButtonRef.current) {
+      cancelButtonRef.current.focus();
+    }
+
+    // Escapeキーでモーダルを閉じる
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowResetConfirm(false);
+      }
+    };
+
+    // フォーカストラップ: Tabキーでモーダル内を循環
+    const handleFocusTrap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !modalRef.current) return;
+
+      const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleFocusTrap);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleFocusTrap);
+    };
+  }, [showResetConfirm]);
 
   const handleSave = async () => {
     if (!activeChatId) {
@@ -349,7 +395,7 @@ export function UIEditorTab({
       {/* Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+          <div ref={modalRef} className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
             <div className="p-6">
               <div className="flex items-center gap-4 mb-4">
                 <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
@@ -365,6 +411,7 @@ export function UIEditorTab({
               </p>
               <div className="flex gap-3 justify-end">
                 <button
+                  ref={cancelButtonRef}
                   onClick={() => setShowResetConfirm(false)}
                   className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                 >
