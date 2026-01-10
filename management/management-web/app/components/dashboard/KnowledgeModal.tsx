@@ -51,18 +51,7 @@ export function KnowledgeModal({
     loadContent();
   }, [knowledge, setError, onClose]);
 
-  // Keyboard handling - Escape to close
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
-
-  // Focus trap
+  // Keyboard handling - Escape to close and Tab for focus trap
   useEffect(() => {
     const modal = modalRef.current;
     if (!modal) return;
@@ -73,27 +62,34 @@ export function KnowledgeModal({
     const firstElement = focusableElements[0];
     const lastElement = focusableElements[focusableElements.length - 1];
 
-    const handleTab = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Handle Escape key
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
 
-      if (e.shiftKey) {
-        if (document.activeElement === firstElement) {
-          e.preventDefault();
-          lastElement?.focus();
-        }
-      } else {
-        if (document.activeElement === lastElement) {
-          e.preventDefault();
-          firstElement?.focus();
+      // Handle Tab key for focus trap
+      if (e.key === "Tab") {
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement?.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement?.focus();
+          }
         }
       }
     };
 
-    document.addEventListener("keydown", handleTab);
+    document.addEventListener("keydown", handleKeyDown);
     firstElement?.focus();
 
-    return () => document.removeEventListener("keydown", handleTab);
-  }, [loading]);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose, loading]);
 
   const handleSave = async () => {
     if (!knowledge) return;
