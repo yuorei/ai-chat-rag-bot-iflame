@@ -55,9 +55,7 @@ export function ChatsTab({
     if (activeChat && !isCreating) {
       startEdit(activeChat);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChatId]);
-
+  }, [activeChatId, activeChat, isCreating, startEdit]);
   // バリデーション
   const MAX_SYSTEM_PROMPT_LENGTH = 2000;
 
