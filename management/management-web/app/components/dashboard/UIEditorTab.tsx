@@ -118,9 +118,26 @@ export function UIEditorTab({
     );
   }, [colors, labels]);
 
+  // サジェストのプレビュー更新
+  const sendSuggestionsPreview = useCallback(() => {
+    if (!iframeRef.current?.contentWindow) return;
+    // enabled かつ text が空でないサジェストのみ送信
+    const enabledSuggestions = suggestions
+      .filter(s => s.enabled && s.text.trim())
+      .map(s => ({ id: s.id, text: s.text }));
+    iframeRef.current.contentWindow.postMessage(
+      { type: "suggestionsPreview", suggestions: enabledSuggestions },
+      "*"
+    );
+  }, [suggestions]);
+
   useEffect(() => {
     sendPreviewUpdate();
   }, [sendPreviewUpdate]);
+
+  useEffect(() => {
+    sendSuggestionsPreview();
+  }, [sendSuggestionsPreview]);
 
   const handleSave = async () => {
     if (!activeChatId) {
@@ -829,7 +846,10 @@ export function UIEditorTab({
                 src={`${PREVIEW_BASE_URL}/index.html?chatId=${activeChatId}&preview=true&apiBase=${encodeURIComponent(PREVIEW_API_BASE_URL)}`}
                 className="w-full h-full border-0"
                 title="Chat Preview"
-                onLoad={sendPreviewUpdate}
+                onLoad={() => {
+                  sendPreviewUpdate();
+                  sendSuggestionsPreview();
+                }}
               />
             </div>
           </div>

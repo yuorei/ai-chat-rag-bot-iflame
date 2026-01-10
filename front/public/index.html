@@ -742,6 +742,10 @@
                 applyThemeSettings(event.data.settings);
                 showSettingsWarning(false); // プレビュー設定が適用されたら警告を非表示
             }
+            // 管理画面からのサジェストプレビューを受信
+            if (event.data.type === 'suggestionsPreview') {
+                renderSuggestions(event.data.suggestions);
+            }
         });
     </script>
 </body>
