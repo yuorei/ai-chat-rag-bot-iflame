@@ -9,7 +9,7 @@ import {
   Bot,
   Palette,
 } from "lucide-react";
-import type { User } from "../../lib/types";
+import type { ChatProfile, User } from "../../lib/types";
 
 type SidebarProps = {
   user: User | null;
@@ -18,6 +18,10 @@ type SidebarProps = {
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
   logout: () => void;
+  chats: ChatProfile[];
+  activeChatId: string;
+  setActiveChatId: (id: string) => void;
+  loadingChats: boolean;
 };
 
 export function Sidebar({
@@ -27,6 +31,10 @@ export function Sidebar({
   sidebarOpen,
   setSidebarOpen,
   logout,
+  chats,
+  activeChatId,
+  setActiveChatId,
+  loadingChats,
 }: SidebarProps) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -99,6 +107,36 @@ export function Sidebar({
           埋め込みガイド
         </Link>
       </nav>
+
+      {/* チャット選択 */}
+      <div className="px-4 py-3 border-t border-gray-200">
+        <label className="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">
+          操作対象チャット
+        </label>
+        {loadingChats ? (
+          <div className="animate-pulse h-10 bg-gray-100 rounded-xl" />
+        ) : chats.length === 0 ? (
+          <p className="text-sm text-gray-400">チャットがありません</p>
+        ) : (
+          <select
+            className="w-full px-3 py-2.5 text-sm font-medium border border-gray-200 rounded-xl bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all cursor-pointer"
+            value={activeChatId}
+            onChange={(e) => setActiveChatId(e.target.value)}
+          >
+            <option value="">チャットを選択...</option>
+            {chats.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.display_name || c.id}
+              </option>
+            ))}
+          </select>
+        )}
+        {activeChatId && (
+          <p className="mt-1 text-xs text-blue-600 truncate">
+            ID: {activeChatId}
+          </p>
+        )}
+      </div>
 
       {/* ユーザー情報 */}
       <div className="p-4 border-t border-gray-200">

@@ -21,7 +21,6 @@ const PREVIEW_API_BASE_URL = typeof window !== 'undefined'
 type UIEditorTabProps = {
   chats: ChatProfile[];
   activeChatId: string;
-  setActiveChatId: (id: string) => void;
   setStatus: (status: string | null) => void;
   setError: (error: string | null) => void;
 };
@@ -29,7 +28,6 @@ type UIEditorTabProps = {
 export function UIEditorTab({
   chats,
   activeChatId,
-  setActiveChatId,
   setStatus,
   setError,
 }: UIEditorTabProps) {
@@ -54,8 +52,11 @@ export function UIEditorTab({
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null);
   const [colorErrors, setColorErrors] = useState<Partial<Record<keyof ThemeColors, string>>>({});
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
 
   // カラーバリデーション関数
   const validateColor = (color: string | undefined): string | null => {
@@ -139,6 +140,50 @@ export function UIEditorTab({
   useEffect(() => {
     sendSuggestionsPreview();
   }, [sendSuggestionsPreview]);
+
+  // モーダルのキーボード操作とフォーカス管理
+  useEffect(() => {
+    if (!showResetConfirm) return;
+
+    // モーダルが開いたら最初のボタンにフォーカス
+    if (cancelButtonRef.current) {
+      cancelButtonRef.current.focus();
+    }
+
+    // Escapeキーでモーダルを閉じる
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowResetConfirm(false);
+      }
+    };
+
+    // フォーカストラップ: Tabキーでモーダル内を循環
+    const handleFocusTrap = (e: KeyboardEvent) => {
+      if (e.key !== "Tab" || !modalRef.current) return;
+
+      const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleFocusTrap);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleFocusTrap);
+    };
+  }, [showResetConfirm]);
 
   const handleSave = async () => {
     if (!activeChatId) {
@@ -324,50 +369,77 @@ export function UIEditorTab({
     }
   };
 
+  const handleResetConfirm = () => {
+    setShowResetConfirm(false);
+    loadSettings();
+  };
+
   if (!activeChatId) {
     return (
-      <div className="text-center py-12">
-        <p className="text-gray-500 mb-4">デザインを編集するチャットを選択してください</p>
-        <select
-          className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          value=""
-          onChange={(e) => setActiveChatId(e.target.value)}
-        >
-          <option value="">チャットを選択...</option>
-          {chats.map((chat) => (
-            <option key={chat.id} value={chat.id}>
-              {chat.display_name} ({chat.id})
-            </option>
-          ))}
-        </select>
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+        <div className="w-20 h-20 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+          <AlertCircle className="w-10 h-10 text-amber-500" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-900 mb-3">
+          チャットを選択してください
+        </h2>
+        <p className="text-gray-500">
+          サイドバーからデザインを編集するチャットを選択してください。
+        </p>
       </div>
     );
   }
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">
+      {/* Reset Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div ref={modalRef} className="bg-white rounded-2xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="p-6">
+              <div className="flex items-center gap-4 mb-4">
+                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">変更をリセットしますか？</h3>
+                  <p className="text-sm text-gray-500">保存していない変更は失われます</p>
+                </div>
+              </div>
+              <p className="text-gray-600 text-sm mb-6">
+                現在の編集内容を破棄し、最後に保存した状態に戻します。この操作は取り消せません。
+              </p>
+              <div className="flex gap-3 justify-end">
+                <button
+                  ref={cancelButtonRef}
+                  onClick={() => setShowResetConfirm(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  キャンセル
+                </button>
+                <button
+                  onClick={handleResetConfirm}
+                  className="px-4 py-2 text-sm font-medium bg-amber-600 text-white hover:bg-amber-700 rounded-lg transition-colors"
+                >
+                  リセットする
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Panel - Settings */}
       <div className="flex-1 lg:max-w-[60%] space-y-4">
-        {/* Chat Selector & Actions */}
+        {/* Actions */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-700">編集対象:</label>
-              <select
-                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={activeChatId}
-                onChange={(e) => setActiveChatId(e.target.value)}
-              >
-                {chats.map((chat) => (
-                  <option key={chat.id} value={chat.id}>
-                    {chat.display_name} ({chat.id})
-                  </option>
-                ))}
-              </select>
+            <div className="text-sm text-gray-600">
+              編集中: <span className="font-semibold text-gray-900">{chats.find(c => c.id === activeChatId)?.display_name || activeChatId}</span>
             </div>
             <div className="flex gap-2">
               <button
-                onClick={loadSettings}
+                onClick={() => setShowResetConfirm(true)}
                 disabled={loading}
                 className="flex items-center gap-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
               >

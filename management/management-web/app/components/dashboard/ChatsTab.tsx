@@ -1,8 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  MessageSquare,
   Plus,
-  RefreshCw,
   Edit2,
   Trash2,
   Check,
@@ -10,8 +8,7 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
-  Search,
-  ArrowUpDown,
+  MessageSquare,
 } from "lucide-react";
 import type { ChatProfile } from "../../lib/types";
 
@@ -40,9 +37,7 @@ type ChatsTabProps = {
 export function ChatsTab({
   chats,
   loadingChats,
-  loadChats,
   activeChatId,
-  setActiveChatId,
   editingChatId,
   chatForm,
   setChatForm,
@@ -51,9 +46,16 @@ export function ChatsTab({
   cancelEdit,
   deleteChat,
 }: ChatsTabProps) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState<"name" | "id" | "created">("name");
+  const [isCreating, setIsCreating] = useState(false);
 
+  // 操作対象チャットが変更されたら自動的に編集モードにする
+  const activeChat = chats.find((c) => c.id === activeChatId);
+
+  useEffect(() => {
+    if (activeChat && !isCreating) {
+      startEdit(activeChat);
+    }
+  }, [activeChatId, activeChat, isCreating, startEdit]);
   // バリデーション
   const MAX_SYSTEM_PROMPT_LENGTH = 2000;
 
@@ -73,7 +75,6 @@ export function ChatsTab({
 
   const validateDomain = (domain: string): string | null => {
     if (!domain) return null;
-    // シンプルなドメイン形式チェック
     const domainRegex =
       /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/;
     if (!domainRegex.test(domain)) {
@@ -88,62 +89,153 @@ export function ChatsTab({
     (chatIdError && chatForm.id) ||
     domainErrors.some((e, i) => e && chatForm.targets[i]);
 
-  // フィルタリングとソート
-  const filteredAndSortedChats = chats
-    .filter((c) => {
-      if (!searchQuery.trim()) return true;
-      const query = searchQuery.toLowerCase();
-      return (
-        c.id.toLowerCase().includes(query) ||
-        (c.display_name || "").toLowerCase().includes(query) ||
-        (c.system_prompt || "").toLowerCase().includes(query) ||
-        (c.targets || [c.target]).some((t) => t.toLowerCase().includes(query))
-      );
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case "name":
-          return (a.display_name || a.id).localeCompare(b.display_name || b.id);
-        case "id":
-          return a.id.localeCompare(b.id);
-        case "created":
-          return (b.created_at || "").localeCompare(a.created_at || "");
-        default:
-          return 0;
-      }
-    });
+  const handleCancelCreate = () => {
+    setIsCreating(false);
+    cancelEdit();
+    // 元のチャットに戻る
+    if (activeChat) {
+      startEdit(activeChat);
+    }
+  };
+
+  const handleSubmitChat = (e: React.FormEvent) => {
+    submitChat(e);
+    setIsCreating(false);
+  };
+
+  const handleStartCreate = () => {
+    setIsCreating(true);
+    cancelEdit();
+    setChatForm({ id: "", targets: [""], display_name: "", system_prompt: "" });
+  };
+
+  const handleDeleteChat = () => {
+    if (activeChatId) {
+      deleteChat(activeChatId);
+    }
+  };
+
+  // ローディング中
+  if (loadingChats) {
+    return (
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+        <div className="animate-pulse space-y-4">
+          <div className="h-6 bg-gray-200 rounded w-1/3" />
+          <div className="h-10 bg-gray-200 rounded" />
+          <div className="h-10 bg-gray-200 rounded" />
+          <div className="h-32 bg-gray-200 rounded" />
+        </div>
+      </div>
+    );
+  }
+
+  // チャットが1つもない場合
+  if (chats.length === 0 && !isCreating) {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={handleStartCreate}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm"
+        >
+          <Plus className="w-5 h-5" />
+          新規チャットを作成
+        </button>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <MessageSquare className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            チャットがありません
+          </h3>
+          <p className="text-sm text-gray-500">
+            上のボタンから新しいチャットを作成してください
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // チャットが選択されていない場合
+  if (!activeChatId && !isCreating) {
+    return (
+      <div className="space-y-6">
+        <button
+          onClick={handleStartCreate}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm"
+        >
+          <Plus className="w-5 h-5" />
+          新規チャットを作成
+        </button>
+
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
+          <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Edit2 className="w-8 h-8 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            編集するチャットを選択してください
+          </h3>
+          <p className="text-sm text-gray-500">
+            左のサイドバーから操作対象のチャットを選択すると、ここで編集できます
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-8">
-      {/* 新規登録・編集フォーム */}
+    <div className="space-y-6">
+      {/* 新規作成ボタン */}
+      {!isCreating && (
+        <button
+          onClick={handleStartCreate}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all shadow-sm"
+        >
+          <Plus className="w-5 h-5" />
+          新規チャットを作成
+        </button>
+      )}
+
+      {/* 編集フォーム */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-              {editingChatId ? (
-                <Edit2 className="w-5 h-5 text-blue-600" />
-              ) : (
-                <Plus className="w-5 h-5 text-blue-600" />
-              )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                {isCreating ? (
+                  <Plus className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <Edit2 className="w-5 h-5 text-blue-600" />
+                )}
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {isCreating ? "新しいチャットを登録" : `チャットを編集`}
+                </h2>
+                <p className="text-sm text-gray-600">
+                  {isCreating
+                    ? "利用先ドメインとシステムプロンプトを設定してください"
+                    : `ID: ${activeChatId}`}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">
-                {editingChatId ? "チャットを編集" : "新しいチャットを登録"}
-              </h2>
-              <p className="text-sm text-gray-600">
-                {editingChatId
-                  ? "チャットの設定を変更できます"
-                  : "利用先ドメインとシステムプロンプトを設定してください"}
-              </p>
-            </div>
+            {!isCreating && (
+              <button
+                onClick={handleDeleteChat}
+                className="flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                削除
+              </button>
+            )}
           </div>
         </div>
 
-        <form onSubmit={submitChat} className="p-4 lg:p-6 space-y-4 lg:space-y-6">
+        <form onSubmit={handleSubmitChat} className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           <div className="grid gap-4 lg:gap-6 grid-cols-1 md:grid-cols-2">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
-                チャットID（エイリアス）
+                チャットID（変更不可）
               </label>
               <input
                 className={`w-full px-4 py-3 rounded-xl border text-sm focus:ring-2 focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
@@ -153,7 +245,7 @@ export function ChatsTab({
                 }`}
                 value={chatForm.id}
                 onChange={(e) => setChatForm((p) => ({ ...p, id: e.target.value }))}
-                disabled={Boolean(editingChatId)}
+                disabled={!isCreating}
                 placeholder="my-chat-bot"
                 required
               />
@@ -163,7 +255,7 @@ export function ChatsTab({
                   {chatIdError}
                 </p>
               )}
-              {!chatIdError && chatForm.id && (
+              {!chatIdError && chatForm.id && isCreating && (
                 <p className="text-xs text-emerald-600 flex items-center gap-1">
                   <CheckCircle2 className="w-3 h-3" />
                   有効なIDです
@@ -275,7 +367,7 @@ export function ChatsTab({
                   ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/20"
                   : "border-gray-200 bg-gray-50 focus:border-blue-500 focus:ring-blue-500/20 focus:bg-white"
               }`}
-              rows={4}
+              rows={6}
               value={chatForm.system_prompt}
               onChange={(e) =>
                 setChatForm((p) => ({ ...p, system_prompt: e.target.value }))
@@ -290,7 +382,7 @@ export function ChatsTab({
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 pt-2">
             <button
               type="submit"
               disabled={
@@ -299,22 +391,22 @@ export function ChatsTab({
               }
               className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-all shadow-sm"
             >
-              {editingChatId ? (
-                <>
-                  <Check className="w-4 h-4" />
-                  更新する
-                </>
-              ) : (
+              {isCreating ? (
                 <>
                   <Plus className="w-4 h-4" />
                   登録する
                 </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  更新する
+                </>
               )}
             </button>
-            {editingChatId && (
+            {isCreating && (
               <button
                 type="button"
-                onClick={cancelEdit}
+                onClick={handleCancelCreate}
                 className="px-6 py-3 text-gray-600 hover:text-gray-800 font-medium rounded-xl hover:bg-gray-100 transition-all"
               >
                 キャンセル
@@ -322,183 +414,6 @@ export function ChatsTab({
             )}
           </div>
         </form>
-      </div>
-
-      {/* 登録済みチャット一覧 */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 lg:px-6 py-4 border-b border-gray-200">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <MessageSquare className="w-5 h-5 text-gray-600" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-base lg:text-lg font-semibold text-gray-900">
-                  登録済みチャット
-                </h2>
-                <p className="text-xs lg:text-sm text-gray-500">
-                  {filteredAndSortedChats.length === chats.length
-                    ? `${chats.length}件登録`
-                    : `${filteredAndSortedChats.length}/${chats.length}件表示`}
-                </p>
-              </div>
-            </div>
-
-            {/* 検索・ソート・更新 */}
-            <div className="flex items-center gap-2 lg:gap-3">
-              {/* 検索ボックス */}
-              <div className="relative flex-1 lg:flex-none">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="検索..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full lg:w-48 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-                />
-              </div>
-
-              {/* ソート */}
-              <div className="relative">
-                <ArrowUpDown className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                <select
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as "name" | "id" | "created")}
-                  className="pl-9 pr-8 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:border-blue-500 focus:outline-none cursor-pointer appearance-none"
-                >
-                  <option value="name">名前順</option>
-                  <option value="id">ID順</option>
-                  <option value="created">作成日順</option>
-                </select>
-              </div>
-
-              {/* 更新ボタン */}
-              <button
-                onClick={loadChats}
-                disabled={loadingChats}
-                className="flex items-center gap-2 px-3 lg:px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-xl transition-all disabled:opacity-60 flex-shrink-0"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingChats ? "animate-spin" : ""}`} />
-                <span className="hidden sm:inline">更新</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 lg:p-6">
-          {loadingChats ? (
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="animate-pulse rounded-xl border border-gray-200 p-4">
-                  <div className="h-5 bg-gray-200 rounded w-2/3 mb-3" />
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2" />
-                  <div className="flex gap-2 mt-4">
-                    <div className="h-6 bg-gray-200 rounded-full w-20" />
-                    <div className="h-6 bg-gray-200 rounded-full w-24" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : chats.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <MessageSquare className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                チャットがありません
-              </h3>
-              <p className="text-sm text-gray-500">
-                上のフォームから新しいチャットを登録してください
-              </p>
-            </div>
-          ) : filteredAndSortedChats.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Search className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">
-                検索結果がありません
-              </h3>
-              <p className="text-sm text-gray-500">別のキーワードで検索してください</p>
-            </div>
-          ) : (
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {filteredAndSortedChats.map((c) => (
-                <div
-                  key={c.id}
-                  className={`rounded-xl border-2 p-4 transition-all cursor-pointer ${
-                    activeChatId === c.id
-                      ? "border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-lg ring-2 ring-blue-200"
-                      : "border-gray-200 bg-white hover:border-gray-300 hover:shadow-md hover:scale-[1.01]"
-                  }`}
-                  onClick={() => setActiveChatId(c.id)}
-                >
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="min-w-0">
-                      <h3 className="font-semibold text-gray-900 truncate">
-                        {c.display_name || c.id}
-                      </h3>
-                      <code className="text-xs text-gray-500 font-mono">{c.id}</code>
-                    </div>
-                    {activeChatId === c.id && (
-                      <span className="flex items-center gap-1 px-2 py-1 bg-blue-600 text-white text-xs font-semibold rounded-full shadow-sm">
-                        <Check className="w-3 h-3" />
-                        選択中
-                      </span>
-                    )}
-                  </div>
-
-                  {/* システムプロンプトプレビュー */}
-                  {c.system_prompt && (
-                    <p className="text-xs text-gray-500 mb-3 line-clamp-2 leading-relaxed">
-                      {c.system_prompt.slice(0, 100)}
-                      {c.system_prompt.length > 100 ? "..." : ""}
-                    </p>
-                  )}
-
-                  <div className="flex flex-wrap gap-1.5 mb-3">
-                    {(c.targets && c.targets.length > 0 ? c.targets : [c.target]).map((t) => (
-                      <span
-                        key={t}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
-                          activeChatId === c.id
-                            ? "bg-blue-100 text-blue-700"
-                            : "bg-gray-100 text-gray-700"
-                        }`}
-                      >
-                        <Globe className="w-3 h-3" />
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div
-                    className="flex items-center gap-2 pt-3 border-t border-gray-200"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => startEdit(c)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-all ${
-                        activeChatId === c.id
-                          ? "bg-blue-600 text-white hover:bg-blue-700"
-                          : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                      }`}
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      編集
-                    </button>
-                    <button
-                      onClick={() => deleteChat(c.id)}
-                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
