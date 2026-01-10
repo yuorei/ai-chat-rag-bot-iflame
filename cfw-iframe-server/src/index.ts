@@ -384,6 +384,48 @@ app.get('/ui-settings', async (c) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /suggestions - Get suggestions for a chat (public endpoint for iframe)
+// Query params: chatId or target
+// ---------------------------------------------------------------------------
+app.get('/suggestions', async (c) => {
+  const chatId = c.req.query('chatId')
+  const target = c.req.query('target') || c.req.header('Origin') || c.req.header('Referer')
+
+  let resolvedChatId = chatId
+
+  // Resolve chatId from target if not provided
+  if (!resolvedChatId && target) {
+    const profile = await resolveChatProfile(c.env.DB, target)
+    if (profile) {
+      resolvedChatId = profile.id
+    }
+  }
+
+  if (!resolvedChatId) {
+    return c.json({ error: 'chatId or target is required' }, 400)
+  }
+
+  try {
+    const result = await c.env.DB
+      .prepare(
+        `SELECT id, text
+         FROM chat_suggestions
+         WHERE chat_id = ? AND enabled = 1
+         ORDER BY order_index ASC`
+      )
+      .bind(resolvedChatId)
+      .all<{ id: string; text: string }>()
+
+    const suggestions = result.results || []
+
+    return c.json({ suggestions })
+  } catch (error) {
+    console.error('Error in /suggestions:', error)
+    return c.json({ error: 'Internal server error' }, 500)
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Helper: Safe JSON parse
 // ---------------------------------------------------------------------------
 function safeParseJSON(text: string | null | undefined): unknown {
@@ -408,6 +450,7 @@ app.get('/', (c) => {
       chat: 'POST /chat',
       profile: 'GET /profile/:chatId',
       uiSettings: 'GET /ui-settings?chatId=<id> or ?target=<domain>',
+      suggestions: 'GET /suggestions?chatId=<id> or ?target=<domain>',
     },
   })
 })
