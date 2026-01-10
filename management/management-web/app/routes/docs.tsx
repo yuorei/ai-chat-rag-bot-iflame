@@ -377,15 +377,6 @@ iframe.contentWindow.postMessage({
 iframe.contentWindow.postMessage({
     type: 'setTheme',
     theme: 'dark'
-}, '*');
-
-// カスタムページコンテキストを送信
-iframe.contentWindow.postMessage({
-    type: 'pageContext',
-    context: {
-        title: 'カスタムタイトル',
-        bodyText: 'カスタムコンテンツ...'
-    }
 }, '*');`}
                 </pre>
               </div>
