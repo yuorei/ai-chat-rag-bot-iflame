@@ -96,3 +96,22 @@ variable "allowed_repositories" {
   type        = list(string)
   default     = []
 }
+
+# BigQuery Logging
+variable "bq_enabled" {
+  description = "Enable BigQuery logging"
+  type        = bool
+  default     = true
+}
+
+variable "bq_dataset_id" {
+  description = "BigQuery dataset ID for logs"
+  type        = string
+  default     = "ai_chat_logs"
+}
+
+variable "bq_table_expiration_days" {
+  description = "BigQuery table expiration in days (0 for never)"
+  type        = number
+  default     = 365
+}

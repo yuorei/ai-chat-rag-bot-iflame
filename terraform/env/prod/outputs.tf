@@ -22,3 +22,20 @@ output "wif_service_account" {
   description = "Service Account for GitHub Actions (WIF_SERVICE_ACCOUNT secret)"
   value       = module.github_actions_wif.service_account_email
 }
+
+# BigQuery outputs
+output "bq_dataset_id" {
+  description = "BigQuery dataset ID"
+  value       = module.bigquery_logs.dataset_id
+}
+
+output "bq_service_account_email" {
+  description = "BigQuery logger service account email"
+  value       = module.bigquery_logs.service_account_email
+}
+
+output "bq_service_account_key" {
+  description = "BigQuery logger service account key (base64) for Cloudflare Workers"
+  value       = module.bigquery_logs.service_account_key_json
+  sensitive   = true
+}
