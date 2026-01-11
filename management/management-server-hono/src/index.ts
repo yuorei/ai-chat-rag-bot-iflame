@@ -157,7 +157,6 @@ app.post('/api/chats', async (c) => {
   const user = c.get('user') as FirebaseUser
 
   const payload = await readJson<{
-    id: string
     target?: string
     targets?: string[]
     target_type?: string
@@ -168,16 +167,13 @@ app.post('/api/chats', async (c) => {
     return jsonError(c, 400, 'invalid json')
   }
 
-  const id = sanitizeAlias(payload.id)
-  if (!id) {
-    return jsonError(c, 400, 'id is required')
-  }
+  const id = crypto.randomUUID()
   const targetType = normalizeTargetType(payload.target_type)
   const targets = normalizeTargets(payload.targets, payload.target, targetType)
   if (targets.length === 0) {
     return jsonError(c, 400, 'at least one target is required')
   }
-  const displayName = (payload.display_name || '').trim() || id
+  const displayName = (payload.display_name || '').trim() || '新しいチャット'
   const systemPrompt = payload.system_prompt || ''
   const ownerUserId = user.uid
 
