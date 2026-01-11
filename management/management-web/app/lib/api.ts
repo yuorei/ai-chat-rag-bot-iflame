@@ -1,4 +1,5 @@
 import { getFirebaseAuth } from './firebase'
+import type { ChatUISettings, ThemeSettings, WidgetSettings, KnowledgeAssetWithContent, Suggestion } from './types';
 
 const fallbackBase =
   import.meta.env.VITE_MANAGEMENT_API_BASE_URL ?? "http://localhost:8100";
@@ -62,7 +63,6 @@ export async function apiFetch<T = any>(
 export class AuthError extends Error {}
 
 // --- UI Settings API ---
-import type { ChatUISettings, ThemeSettings, WidgetSettings } from './types';
 
 export async function fetchUISettings(chatId: string): Promise<ChatUISettings> {
   return apiFetch<ChatUISettings>(`/api/chats/${chatId}/ui-settings`);
@@ -208,8 +208,23 @@ export async function deleteButtonImage(chatId: string): Promise<void> {
   await apiFetch(`/api/chats/${chatId}/button-image`, { method: 'DELETE' });
 }
 
+// --- Knowledge API ---
+
+export async function fetchKnowledgeContent(id: string): Promise<KnowledgeAssetWithContent> {
+  return apiFetch<KnowledgeAssetWithContent>(`/api/knowledge/${id}`);
+}
+
+export async function updateKnowledge(
+  id: string,
+  data: { title?: string; text?: string }
+): Promise<{ success: boolean }> {
+  return apiFetch(`/api/knowledge/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Suggestions API ---
-import type { Suggestion } from './types';
 
 export async function fetchSuggestions(chatId: string): Promise<Suggestion[]> {
   const data = await apiFetch<{ suggestions: Suggestion[] }>(`/api/chats/${chatId}/suggestions`);

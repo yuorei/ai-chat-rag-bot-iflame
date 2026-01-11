@@ -38,6 +38,11 @@ export type KnowledgeAsset = {
   updated_at: string;
 };
 
+export type KnowledgeAssetWithContent = KnowledgeAsset & {
+  text?: string | null;
+  editable?: boolean;
+};
+
 export type User = {
   id: string;
   email: string;
