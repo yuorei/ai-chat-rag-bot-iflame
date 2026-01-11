@@ -96,3 +96,15 @@ variable "allowed_repositories" {
   type        = list(string)
   default     = []
 }
+
+variable "sentry_dsn" {
+  description = "Sentry DSN for error tracking"
+  type        = string
+  default     = ""
+}
+
+variable "sentry_environment" {
+  description = "Sentry environment name"
+  type        = string
+  default     = "production"
+}

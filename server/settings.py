@@ -47,3 +47,7 @@ JWT_ALGORITHM = 'HS256'
 
 
 ADMIN_API_KEY = os.getenv('ADMIN_API_KEY')
+
+# Sentry Error Tracking
+SENTRY_DSN = os.getenv('SENTRY_DSN')
+SENTRY_ENVIRONMENT = os.getenv('SENTRY_ENVIRONMENT', 'development')

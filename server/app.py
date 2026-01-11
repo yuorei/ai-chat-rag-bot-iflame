@@ -2,8 +2,10 @@ import json
 import os
 import time
 
+import sentry_sdk
 from flask import Flask, jsonify, g, request
 from flask_cors import CORS
+from sentry_sdk.integrations.flask import FlaskIntegration
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, FieldCondition, Filter, MatchValue, PayloadSchemaType, PointIdsList, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
@@ -15,8 +17,32 @@ from domain_registry import DomainRegistry
 from file_utils import add_manual_knowledge, handle_file_upload, handle_url_fetch
 
 
+# Initialize Sentry error tracking
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        integrations=[FlaskIntegration()],
+        traces_sample_rate=0,
+        profiles_sample_rate=0,
+        send_default_pii=True,
+        enable_logs=True,
+    )
+
 app = Flask(__name__)
 CORS(app)
+
+
+@app.before_request
+def sentry_set_context():
+    """Attach request context to Sentry for better error debugging."""
+    if settings.SENTRY_DSN:
+        sentry_sdk.set_context("request", {
+            "url": request.url,
+            "method": request.method,
+            "origin": request.headers.get('Origin', ''),
+        })
+
 
 qdrant_client = None
 embedding_model = None
@@ -227,6 +253,13 @@ def chat():
         return jsonify(response_data)
 
     except Exception as e:
+        if settings.SENTRY_DSN:
+            sentry_sdk.set_context("chat", {
+                "chat_id": chat_id if 'chat_id' in dir() else None,
+                "query": query if 'query' in dir() else None,
+                "context_found": context_found if 'context_found' in dir() else None,
+            })
+            sentry_sdk.capture_exception(e)
         return jsonify({'error': str(e)}), 500
 
 
