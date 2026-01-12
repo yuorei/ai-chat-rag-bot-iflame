@@ -26,7 +26,6 @@ class ChatbotEvent:
     event_timestamp: str
     chat_id: str
     request_id: Optional[str] = None
-    client_ip: Optional[str] = None
     user_agent: Optional[str] = None
     origin_domain: Optional[str] = None
     message_length: Optional[int] = None
@@ -218,7 +217,6 @@ def log_chat_request(
     query: str,
     response: str,
     request_id: Optional[str] = None,
-    client_ip: Optional[str] = None,
     user_agent: Optional[str] = None,
     origin_domain: Optional[str] = None,
     context_found: bool = False,
@@ -240,7 +238,6 @@ def log_chat_request(
         chat_id=chat_id,
         event_type='chat_request',
         request_id=request_id,
-        client_ip=client_ip,
         user_agent=user_agent,
         origin_domain=origin_domain,
         message_length=len(query) if query else 0,
