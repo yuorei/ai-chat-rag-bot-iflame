@@ -74,6 +74,9 @@ module "server" {
     BQ_ENABLED           = tostring(var.bq_enabled)
     GCP_PROJECT_ID       = var.project_id
     BQ_DATASET_ID        = var.bq_dataset_id
+    # Sentry error tracking
+    SENTRY_DSN           = var.sentry_dsn
+    SENTRY_ENVIRONMENT   = var.sentry_environment
   }
 
   allow_unauthenticated = true

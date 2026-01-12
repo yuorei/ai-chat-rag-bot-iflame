@@ -18,19 +18,36 @@ class DomainRegistry:
         self.host_map = {}
         self.id_map = {}
         self._expires_at = 0.0
+        self._last_error = None
+        self._loaded_successfully = False
         self.reload()
 
     def reload(self):
+        api_url = f"{self.base_url}/api/chats"
+        has_api_key = bool(self.admin_api_key)
         try:
             headers = {}
             if self.admin_api_key:
                 headers["X-Admin-API-Key"] = self.admin_api_key
-            res = requests.get(f"{self.base_url}/api/chats", headers=headers, timeout=self.timeout)
-            res.raise_for_status()
+            res = requests.get(api_url, headers=headers, timeout=self.timeout)
+
+            if not res.ok:
+                error_body = res.text[:500]
+                error_msg = f"API returned {res.status_code}: {error_body}"
+                print(f"[ERROR] DomainRegistry reload failed - url={api_url}, has_api_key={has_api_key}, status={res.status_code}, body={error_body}")
+                self._last_error = error_msg
+                self._expires_at = time.time() + self.cache_ttl / 2
+                return
+
             payload = res.json()
             rows = payload.get("chats", [])
+            print(f"[INFO] DomainRegistry reload success - loaded {len(rows)} chats from {api_url}")
+            self._last_error = None
+            self._loaded_successfully = True
         except Exception as e:
-            print(f"[WARN] failed to refresh chat profiles from API: {e}")
+            error_msg = f"{type(e).__name__}: {e}"
+            print(f"[ERROR] DomainRegistry reload exception - url={api_url}, has_api_key={has_api_key}, error={error_msg}")
+            self._last_error = error_msg
             self._expires_at = time.time() + self.cache_ttl / 2
             return
 
@@ -102,6 +119,19 @@ class DomainRegistry:
     def _ensure_latest(self):
         if time.time() >= self._expires_at:
             self.reload()
+
+    def get_stats(self):
+        """デバッグ用の統計情報を返す"""
+        return {
+            'loaded': self._loaded_successfully,
+            'chat_count': len(self.id_map),
+            'host_count': len(self.host_map),
+            'last_error': self._last_error,
+            'available_ids': list(self.id_map.keys()),
+            'available_hosts': list(self.host_map.keys()),
+            'api_url': self.base_url,
+            'has_api_key': bool(self.admin_api_key),
+        }
 
     def _normalize_domain(self, value: str):
         if not value:
