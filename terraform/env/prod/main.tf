@@ -70,6 +70,8 @@ module "server" {
     MGMT_ADMIN_API_KEY   = var.mgmt_admin_api_key
     GEMINI_API_KEY       = var.gemini_api_key
     QDRANT_API_KEY       = var.qdrant_api_key
+    SENTRY_DSN           = var.sentry_dsn
+    SENTRY_ENVIRONMENT   = var.sentry_environment
   }
 
   allow_unauthenticated = true

@@ -1,7 +1,9 @@
+import json
 from functools import wraps
 from urllib.parse import urlparse
 
 from flask import jsonify, g, request
+import sentry_sdk
 
 from domain_registry import DomainRegistry
 
@@ -66,6 +68,23 @@ def require_domain_session(registry: DomainRegistry):
                     chat = registry.find_by_host(request_host)
 
             if not chat:
+                # サーバーログとSentryに詳細を出力
+                registry_stats = registry.get_stats()
+                debug_info = {
+                    'provided_chat_id': chat_id,
+                    'request_host': request_host,
+                    'origin_header': request.headers.get('Origin'),
+                    'registry_loaded': registry_stats['loaded'],
+                    'registry_chat_count': registry_stats['chat_count'],
+                    'registry_last_error': registry_stats['last_error'],
+                    'available_chat_ids': registry_stats['available_ids'][:10],
+                }
+                print(f"[ERROR] Unknown chat - {json.dumps(debug_info, ensure_ascii=False)}")
+                sentry_sdk.capture_message(
+                    'Unknown chat error',
+                    level='error',
+                    extras=debug_info
+                )
                 return jsonify({'error': 'Unknown chat'}), 404
 
             g.chat = chat
