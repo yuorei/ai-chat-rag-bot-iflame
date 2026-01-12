@@ -28,7 +28,6 @@ if settings.SENTRY_DSN:
         traces_sample_rate=0,
         profiles_sample_rate=0,
         send_default_pii=True,
-        enable_logs=True,
     )
 
 app = Flask(__name__)
