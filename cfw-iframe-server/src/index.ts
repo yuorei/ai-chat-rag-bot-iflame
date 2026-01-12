@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import * as Sentry from '@sentry/cloudflare'
 import {
   DEFAULT_COLORS,
   DEFAULT_LABELS,
@@ -15,6 +16,8 @@ type Bindings = {
   DB: D1Database
   PYTHON_SERVER_URL: string
   ALLOWED_ORIGINS: string
+  SENTRY_DSN?: string
+  SENTRY_ENVIRONMENT?: string
 }
 
 type Variables = {
@@ -97,6 +100,22 @@ app.use('*', cors({
   maxAge: 86400,
   credentials: true,
 }))
+
+// Global error handler with Sentry
+app.onError((err, c) => {
+  if (c.env.SENTRY_DSN) {
+    Sentry.captureException(err, {
+      extra: {
+        url: c.req.url,
+        method: c.req.method,
+        path: c.req.path,
+        chatProfile: c.get('chatProfile'),
+      },
+    })
+  }
+  console.error('Unhandled error:', err)
+  return c.json({ error: 'Internal server error' }, 500)
+})
 
 // ---------------------------------------------------------------------------
 // Helper: Resolve chat profile by target/domain
@@ -257,6 +276,22 @@ app.post('/chat', async (c) => {
   }
 
   if (!resolvedChatId) {
+    const logData = {
+      event: 'chat_id_resolution_failed',
+      providedChatId: chat_id,
+      providedTarget: target,
+      originHeader: c.req.header('Origin'),
+      refererHeader: c.req.header('Referer'),
+    }
+    console.error(JSON.stringify(logData))
+
+    if (c.env.SENTRY_DSN) {
+      Sentry.captureMessage('Failed to resolve chat_id', {
+        level: 'warning',
+        extra: logData,
+      })
+    }
+
     return c.json(
       { error: 'chat_id or target is required to identify the chat profile' },
       400
@@ -266,6 +301,13 @@ app.post('/chat', async (c) => {
   try {
     // Forward to Python server
     const pythonUrl = `${c.env.PYTHON_SERVER_URL}/api/chat`
+    console.log(JSON.stringify({
+      event: 'forwarding_to_python',
+      pythonUrl,
+      resolvedChatId,
+      messageLength: message.length,
+    }))
+
     const response = await fetch(pythonUrl, {
       method: 'POST',
       headers: {
@@ -279,7 +321,26 @@ app.post('/chat', async (c) => {
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('Python server error:', response.status, errorText)
+      const logData = {
+        event: 'python_server_error',
+        pythonServerUrl: pythonUrl,
+        status: response.status,
+        errorBody: errorText,
+        resolvedChatId,
+        originalTarget: target,
+        originHeader: c.req.header('Origin'),
+        refererHeader: c.req.header('Referer'),
+      }
+      console.error(JSON.stringify(logData))
+
+      // Capture error to Sentry
+      if (c.env.SENTRY_DSN) {
+        Sentry.captureMessage(`Chat service error: ${response.status}`, {
+          level: 'error',
+          extra: logData,
+        })
+      }
+
       return c.json(
         { error: 'Chat service unavailable', details: errorText },
         response.status as 400 | 500 | 502 | 503
@@ -290,6 +351,20 @@ app.post('/chat', async (c) => {
     return c.json(data)
   } catch (error) {
     console.error('Error forwarding to Python server:', error)
+
+    // Capture exception to Sentry
+    if (c.env.SENTRY_DSN) {
+      Sentry.captureException(error, {
+        extra: {
+          url: c.req.url,
+          method: c.req.method,
+          chatId: resolvedChatId,
+          message: message,
+          pythonServerUrl: c.env.PYTHON_SERVER_URL,
+        },
+      })
+    }
+
     return c.json({ error: 'Failed to connect to chat service' }, 502)
   }
 })
@@ -453,4 +528,18 @@ app.get('/', (c) => {
   })
 })
 
-export default app
+// Wrap the app with Sentry for error tracking
+export default Sentry.withSentry(
+  (env: Bindings) => ({
+    dsn: env.SENTRY_DSN,
+    environment: env.SENTRY_ENVIRONMENT || 'development',
+    tracesSampleRate: 0,
+    enableLogs: true,
+    sendDefaultPii: true,
+  }),
+  {
+    async fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+      return app.fetch(request, env, ctx)
+    },
+  } satisfies ExportedHandler<Bindings>
+)

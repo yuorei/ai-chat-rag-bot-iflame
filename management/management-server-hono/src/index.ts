@@ -1,6 +1,7 @@
 import { Hono, Context } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 import { Auth, WorkersKVStoreSingle } from 'firebase-auth-cloudflare-workers'
+import * as Sentry from '@sentry/cloudflare'
 import {
   DEFAULT_COLORS,
   DEFAULT_LABELS,
@@ -47,6 +48,8 @@ type Bindings = {
   MGMT_HTTP_TIMEOUT_SEC?: string
   ASSETS_BUCKET: R2Bucket
   ASSETS_PUBLIC_URL?: string
+  SENTRY_DSN?: string
+  SENTRY_ENVIRONMENT?: string
 }
 
 type Variables = {
@@ -114,6 +117,25 @@ app.use('*', async (c, next) => {
     return c.body(null, 204)
   }
   return next()
+})
+
+// Global error handler with Sentry
+app.onError((err, c) => {
+  if (c.env.SENTRY_DSN) {
+    Sentry.captureException(err, {
+      extra: {
+        url: c.req.url,
+        method: c.req.method,
+        path: c.req.path,
+      },
+      user: c.get('user') ? {
+        id: (c.get('user') as FirebaseUser).uid,
+        email: (c.get('user') as FirebaseUser).email,
+      } : undefined,
+    })
+  }
+  console.error('Unhandled error:', err)
+  return c.json({ error: 'internal server error' }, 500)
 })
 
 app.get('/health', (c) => c.json({ status: 'ok' }))
@@ -970,7 +992,21 @@ app.delete('/api/knowledge/:id', async (c) => {
   }
 })
 
-export default app
+// Wrap the app with Sentry for error tracking
+export default Sentry.withSentry(
+  (env: Bindings) => ({
+    dsn: env.SENTRY_DSN,
+    environment: env.SENTRY_ENVIRONMENT || 'development',
+    tracesSampleRate: 0,
+    enableLogs: true,
+    sendDefaultPii: true,
+  }),
+  {
+    async fetch(request: Request, env: Bindings, ctx: ExecutionContext) {
+      return app.fetch(request, env, ctx)
+    },
+  } satisfies ExportedHandler<Bindings>
+)
 
 // --- helpers ---
 
