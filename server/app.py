@@ -58,6 +58,18 @@ domain_registry = DomainRegistry(
 ai_agent = AIAgent()
 
 
+def get_client_ip():
+    """Get real client IP from X-Forwarded-For header or remote_addr.
+
+    Cloud Run and other proxies set X-Forwarded-For header with the original client IP.
+    Format: X-Forwarded-For: client, proxy1, proxy2
+    """
+    xff = request.headers.get('X-Forwarded-For')
+    if xff:
+        return xff.split(',')[0].strip()
+    return request.remote_addr
+
+
 def _ensure_payload_indexes(client):
     """Ensure required payload indexes exist on the collection."""
     required_indexes = ["chat_id", "type"]
@@ -280,7 +292,7 @@ def chat():
             query=query,
             response=response,
             request_id=getattr(g, 'request_id', None),
-            client_ip=request.remote_addr,
+            client_ip=get_client_ip(),
             user_agent=request.headers.get('User-Agent'),
             origin_domain=request.headers.get('Origin'),
             context_found=context_found,
@@ -309,7 +321,7 @@ def chat():
             query=query,
             response='',
             request_id=getattr(g, 'request_id', None),
-            client_ip=request.remote_addr,
+            client_ip=get_client_ip(),
             user_agent=request.headers.get('User-Agent'),
             origin_domain=request.headers.get('Origin'),
             context_found=context_found,
