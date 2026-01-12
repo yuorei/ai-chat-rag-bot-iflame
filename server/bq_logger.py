@@ -8,6 +8,8 @@ from datetime import datetime
 from queue import Empty, Queue
 from typing import Optional
 
+import sentry_sdk
+
 # Environment variables
 BQ_ENABLED = os.getenv('BQ_ENABLED', 'false').lower() == 'true'
 GCP_PROJECT_ID = os.getenv('GCP_PROJECT_ID', '')
@@ -103,6 +105,7 @@ class BigQueryLogger:
                 self._flush_batch()
             except Exception as e:
                 print(f"BigQuery flush error: {e}")
+                sentry_sdk.capture_exception(e)
 
             # Wait for next flush interval, but check shutdown more frequently
             for _ in range(self.flush_interval * 10):
@@ -146,10 +149,20 @@ class BigQueryLogger:
                 errors = self._client.insert_rows_json(table_ref, rows)
                 if errors:
                     print(f"BigQuery insert errors for {table_id}: {errors[:3]}")
+                    sentry_sdk.capture_message(
+                        f"BigQuery insert errors for {table_id}",
+                        level="error",
+                        extras={
+                            "table_id": table_id,
+                            "errors": errors[:3],
+                            "row_count": len(rows),
+                        }
+                    )
                 else:
                     print(f"BigQuery: inserted {len(rows)} rows into {table_id}")
             except Exception as e:
                 print(f"BigQuery insert failed for {table_id}: {e}")
+                sentry_sdk.capture_exception(e)
 
     def log_chat_event(self, event: ChatbotEvent):
         """Queue a chatbot event for logging."""

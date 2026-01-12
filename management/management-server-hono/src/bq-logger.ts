@@ -3,6 +3,8 @@
  * Uses BigQuery REST API with service account authentication
  */
 
+import * as Sentry from '@sentry/cloudflare'
+
 export interface AuditEvent {
   event_id: string
   event_timestamp: string
@@ -57,8 +59,11 @@ export class BigQueryLogger {
     if (serviceAccountKeyJson) {
       try {
         this.credentials = JSON.parse(serviceAccountKeyJson)
-      } catch {
+      } catch (err) {
         console.error('Failed to parse service account key JSON')
+        Sentry.captureException(err, {
+          extra: { context: 'BigQueryLogger constructor - service account key parse' },
+        })
         this.credentials = null
       }
     } else {
@@ -111,14 +116,30 @@ export class BigQueryLogger {
       if (!response.ok) {
         const error = await response.text()
         console.error(`BigQuery insert failed: ${response.status} ${error}`)
+        Sentry.captureMessage(`BigQuery insert failed: ${response.status}`, {
+          level: 'error',
+          extra: {
+            status: response.status,
+            error,
+            eventCount: events.length,
+          },
+        })
       } else {
         const result = (await response.json()) as { insertErrors?: unknown[] }
         if (result.insertErrors && result.insertErrors.length > 0) {
           console.error('BigQuery insert errors:', JSON.stringify(result.insertErrors))
+          Sentry.captureMessage('BigQuery insert errors', {
+            level: 'error',
+            extra: {
+              insertErrors: result.insertErrors,
+              eventCount: events.length,
+            },
+          })
         }
       }
     } catch (err) {
       console.error('BigQuery flush error:', err)
+      Sentry.captureException(err)
       // Don't re-add to buffer to avoid infinite loop
     }
   }
@@ -145,7 +166,15 @@ export class BigQueryLogger {
       })
 
       if (!response.ok) {
-        console.error('OAuth token request failed:', await response.text())
+        const errorText = await response.text()
+        console.error('OAuth token request failed:', errorText)
+        Sentry.captureMessage('BigQuery OAuth token request failed', {
+          level: 'error',
+          extra: {
+            status: response.status,
+            error: errorText,
+          },
+        })
         return null
       }
 
@@ -155,6 +184,7 @@ export class BigQueryLogger {
       return this.accessToken
     } catch (err) {
       console.error('Failed to get OAuth token:', err)
+      Sentry.captureException(err)
       return null
     }
   }
