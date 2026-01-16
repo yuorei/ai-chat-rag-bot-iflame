@@ -336,7 +336,7 @@ app.post('/chat', async (c) => {
       body: JSON.stringify({
         message,
         chat_id: resolvedChatId,
-        parent_origin: parent_origin || null,
+        parent_origin: parent_origin ?? null,
       }),
     })
 
