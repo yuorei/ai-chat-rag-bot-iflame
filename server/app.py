@@ -275,6 +275,7 @@ def chat():
 
         # BigQuery logging
         total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
+        client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
         log_chat_request(
             chat_id=chat_id,
             query=query,
@@ -289,6 +290,7 @@ def chat():
             llm_model=settings.GEMINI_MODEL_NAME,
             llm_request_duration_ms=llm_request_duration_ms,
             total_duration_ms=total_duration_ms,
+            client_ip=client_ip,
         )
 
         return jsonify(response_data)
@@ -303,6 +305,7 @@ def chat():
         query = data.get('message', '')
         chat_entry = getattr(g, 'chat', {})
         chat_id = chat_entry.get('id', 'unknown')
+        client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
         log_chat_request(
             chat_id=chat_id,
             query=query,
@@ -319,6 +322,7 @@ def chat():
             total_duration_ms=total_duration_ms,
             error_code=error_code,
             error_message=error_message,
+            client_ip=client_ip,
         )
 
         # Report to Sentry

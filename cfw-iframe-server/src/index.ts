@@ -324,6 +324,11 @@ app.post('/chat', async (c) => {
     if (referer) {
       forwardHeaders['X-Original-Referer'] = referer
     }
+    // Forward client IP from Cloudflare
+    const clientIp = c.req.header('CF-Connecting-IP')
+    if (clientIp) {
+      forwardHeaders['X-Forwarded-For'] = clientIp
+    }
 
     const response = await fetch(pythonUrl, {
       method: 'POST',

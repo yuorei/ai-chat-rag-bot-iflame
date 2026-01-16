@@ -43,6 +43,7 @@ class ChatbotEvent:
     error_code: Optional[str] = None
     error_message: Optional[str] = None
     total_duration_ms: Optional[int] = None
+    client_ip: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Convert to dictionary, filtering out None values for optional fields."""
@@ -228,6 +229,7 @@ def log_chat_request(
     total_duration_ms: Optional[int] = None,
     error_code: Optional[str] = None,
     error_message: Optional[str] = None,
+    client_ip: Optional[str] = None,
 ):
     """Convenience function to log a chat request event."""
     logger = get_logger()
@@ -253,5 +255,6 @@ def log_chat_request(
         total_duration_ms=total_duration_ms,
         error_code=error_code,
         error_message=error_message,
+        client_ip=client_ip,
     )
     logger.log_chat_event(event)
