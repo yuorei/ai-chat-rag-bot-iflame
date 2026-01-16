@@ -230,6 +230,8 @@ def log_chat_request(
     error_code: Optional[str] = None,
     error_message: Optional[str] = None,
     client_ip: Optional[str] = None,
+    tokens_input: Optional[int] = None,
+    tokens_output: Optional[int] = None,
 ):
     """Convenience function to log a chat request event."""
     logger = get_logger()
@@ -256,5 +258,7 @@ def log_chat_request(
         error_code=error_code,
         error_message=error_message,
         client_ip=client_ip,
+        tokens_input=tokens_input,
+        tokens_output=tokens_output,
     )
     logger.log_chat_event(event)
