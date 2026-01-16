@@ -1,0 +1,17 @@
+[
+  {"name": "event_id", "type": "STRING", "mode": "REQUIRED", "description": "Unique event identifier (UUID)"},
+  {"name": "event_timestamp", "type": "TIMESTAMP", "mode": "REQUIRED", "description": "When the event occurred"},
+  {"name": "user_id", "type": "STRING", "mode": "REQUIRED", "description": "Firebase user ID"},
+  {"name": "user_email", "type": "STRING", "mode": "NULLABLE", "description": "User email address"},
+  {"name": "action", "type": "STRING", "mode": "REQUIRED", "description": "Action type: create, read, update, delete"},
+  {"name": "resource_type", "type": "STRING", "mode": "REQUIRED", "description": "Resource type: chat, knowledge, ui_settings, suggestions"},
+  {"name": "resource_id", "type": "STRING", "mode": "NULLABLE", "description": "Target resource ID"},
+  {"name": "chat_id", "type": "STRING", "mode": "NULLABLE", "description": "Related chat ID"},
+  {"name": "request_method", "type": "STRING", "mode": "NULLABLE", "description": "HTTP method"},
+  {"name": "request_path", "type": "STRING", "mode": "NULLABLE", "description": "Request path"},
+  {"name": "response_status", "type": "INT64", "mode": "NULLABLE", "description": "HTTP response status code"},
+  {"name": "response_duration_ms", "type": "INT64", "mode": "NULLABLE", "description": "Response duration in milliseconds"},
+  {"name": "changes_summary", "type": "STRING", "mode": "NULLABLE", "description": "JSON summary of changes made"},
+  {"name": "client_ip", "type": "STRING", "mode": "NULLABLE", "description": "Client IP address"},
+  {"name": "user_agent", "type": "STRING", "mode": "NULLABLE", "description": "User agent string"}
+]

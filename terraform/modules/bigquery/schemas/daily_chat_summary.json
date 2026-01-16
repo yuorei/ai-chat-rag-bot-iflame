@@ -1,0 +1,10 @@
+[
+  {"name": "date", "type": "DATE", "mode": "REQUIRED", "description": "Summary date"},
+  {"name": "chat_id", "type": "STRING", "mode": "REQUIRED", "description": "Chat identifier"},
+  {"name": "total_messages", "type": "INT64", "mode": "NULLABLE", "description": "Total number of messages"},
+  {"name": "unique_sessions", "type": "INT64", "mode": "NULLABLE", "description": "Number of unique sessions"},
+  {"name": "avg_response_time_ms", "type": "FLOAT64", "mode": "NULLABLE", "description": "Average response time in milliseconds"},
+  {"name": "context_found_rate", "type": "FLOAT64", "mode": "NULLABLE", "description": "Rate of requests where context was found"},
+  {"name": "error_rate", "type": "FLOAT64", "mode": "NULLABLE", "description": "Error rate"},
+  {"name": "total_tokens_used", "type": "INT64", "mode": "NULLABLE", "description": "Total tokens used (input + output)"}
+]
