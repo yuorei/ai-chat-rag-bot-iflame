@@ -308,11 +308,26 @@ app.post('/chat', async (c) => {
       messageLength: message.length,
     }))
 
+    // Forward original client headers to Python server
+    const forwardHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const userAgent = c.req.header('User-Agent')
+    if (userAgent) {
+      forwardHeaders['User-Agent'] = userAgent
+    }
+    const origin = c.req.header('Origin')
+    if (origin) {
+      forwardHeaders['X-Original-Origin'] = origin
+    }
+    const referer = c.req.header('Referer')
+    if (referer) {
+      forwardHeaders['X-Original-Referer'] = referer
+    }
+
     const response = await fetch(pythonUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: forwardHeaders,
       body: JSON.stringify({
         message,
         chat_id: resolvedChatId,
