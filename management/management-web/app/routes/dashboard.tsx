@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { getFirebaseAuth } from "../lib/firebase";
@@ -147,7 +147,7 @@ export default function Dashboard() {
           method: "PUT",
           body: JSON.stringify({
             targets,
-            display_name: chatForm.display_name || chatForm.id,
+            display_name: chatForm.display_name,
             system_prompt: chatForm.system_prompt,
           }),
         });
@@ -157,9 +157,8 @@ export default function Dashboard() {
         const res = await apiFetch<ChatProfile>("/api/chats", {
           method: "POST",
           body: JSON.stringify({
-            id: chatForm.id,
             targets,
-            display_name: chatForm.display_name || chatForm.id,
+            display_name: chatForm.display_name,
             system_prompt: chatForm.system_prompt,
           }),
         });
@@ -310,7 +309,7 @@ export default function Dashboard() {
     }
   };
 
-  const startEdit = (chat: ChatProfile) => {
+  const startEdit = useCallback((chat: ChatProfile) => {
     setEditingChatId(chat.id);
     setActiveChatId(chat.id);
     setChatForm({
@@ -321,7 +320,7 @@ export default function Dashboard() {
     });
     setStatus(null);
     setError(null);
-  };
+  }, []);
 
   const cancelEdit = () => {
     setEditingChatId(null);

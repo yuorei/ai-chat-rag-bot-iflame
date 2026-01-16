@@ -147,7 +147,8 @@
     const iframe = document.createElement('iframe');
     iframe.id = 'iframe-widget-frame';
     const chatQuery = chatId ? `chatId=${encodeURIComponent(chatId)}&` : '';
-    iframe.src = `${widgetBase}/index.html?${chatQuery}apiBase=${encodeURIComponent(apiBase)}`;
+    const parentOrigin = window.location.origin;
+    iframe.src = `${widgetBase}/index.html?${chatQuery}apiBase=${encodeURIComponent(apiBase)}&parentOrigin=${encodeURIComponent(parentOrigin)}`;
     iframe.style.position = 'fixed';
     iframe.style.right = dataset.right || (isMobile ? '10px' : '20px');
     iframe.style.bottom = iframeBottom + 'px'; // ★ ボタンより上に配置

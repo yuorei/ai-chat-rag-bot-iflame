@@ -59,20 +59,6 @@ export function ChatsTab({
   // バリデーション
   const MAX_SYSTEM_PROMPT_LENGTH = 2000;
 
-  const validateChatId = (id: string): string | null => {
-    if (!id) return null;
-    if (!/^[a-zA-Z0-9-_]+$/.test(id)) {
-      return "英数字、ハイフン、アンダースコアのみ使用可能です";
-    }
-    if (id.length < 2) {
-      return "チャットIDは2文字以上50文字以内で入力してください";
-    }
-    if (id.length > 50) {
-      return "チャットIDは2文字以上50文字以内で入力してください";
-    }
-    return null;
-  };
-
   const validateDomain = (domain: string): string | null => {
     if (!domain) return null;
     const domainRegex =
@@ -83,11 +69,8 @@ export function ChatsTab({
     return null;
   };
 
-  const chatIdError = validateChatId(chatForm.id);
   const domainErrors = chatForm.targets.map(validateDomain);
-  const hasValidationErrors =
-    (chatIdError && chatForm.id) ||
-    domainErrors.some((e, i) => e && chatForm.targets[i]);
+  const hasValidationErrors = domainErrors.some((e, i) => e && chatForm.targets[i]);
 
   const handleCancelCreate = () => {
     setIsCreating(false);
@@ -233,35 +216,19 @@ export function ChatsTab({
 
         <form onSubmit={handleSubmitChat} className="p-4 lg:p-6 space-y-4 lg:space-y-6">
           <div className="grid gap-4 lg:gap-6 grid-cols-1 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                チャットID（変更不可）
-              </label>
-              <input
-                className={`w-full px-4 py-3 rounded-xl border text-sm focus:ring-2 focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
-                  chatIdError && chatForm.id
-                    ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-500/20"
-                    : "border-gray-200 bg-gray-50 focus:border-blue-500 focus:ring-blue-500/20 focus:bg-white"
-                }`}
-                value={chatForm.id}
-                onChange={(e) => setChatForm((p) => ({ ...p, id: e.target.value }))}
-                disabled={!isCreating}
-                placeholder="my-chat-bot"
-                required
-              />
-              {chatIdError && chatForm.id && (
-                <p className="text-xs text-red-600 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  {chatIdError}
-                </p>
-              )}
-              {!chatIdError && chatForm.id && isCreating && (
-                <p className="text-xs text-emerald-600 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  有効なIDです
-                </p>
-              )}
-            </div>
+            {!isCreating && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  チャットID
+                </label>
+                <input
+                  className="w-full px-4 py-3 rounded-xl border text-sm focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed border-gray-200 bg-gray-50"
+                  value={chatForm.id}
+                  disabled
+                  readOnly
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <label className="block text-sm font-medium text-gray-700">
                 表示名

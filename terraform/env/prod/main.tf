@@ -70,6 +70,11 @@ module "server" {
     MGMT_ADMIN_API_KEY   = var.mgmt_admin_api_key
     GEMINI_API_KEY       = var.gemini_api_key
     QDRANT_API_KEY       = var.qdrant_api_key
+    # BigQuery logging
+    BQ_ENABLED           = tostring(var.bq_enabled)
+    GCP_PROJECT_ID       = var.project_id
+    BQ_DATASET_ID        = var.bq_dataset_id
+    # Sentry error tracking
     SENTRY_DSN           = var.sentry_dsn
     SENTRY_ENVIRONMENT   = var.sentry_environment
   }
@@ -89,4 +94,20 @@ module "github_actions_wif" {
   project_id           = var.project_id
   github_repository    = var.github_repository
   allowed_repositories = var.allowed_repositories
+}
+
+# BigQuery logging infrastructure
+module "bigquery_logs" {
+  source = "../../modules/bigquery"
+
+  project_id                    = var.project_id
+  dataset_id                    = var.bq_dataset_id
+  location                      = var.region
+  default_table_expiration_days = var.bq_table_expiration_days
+  deletion_protection           = true
+
+  labels = {
+    environment = "production"
+    application = "ai-chat-iflame"
+  }
 }

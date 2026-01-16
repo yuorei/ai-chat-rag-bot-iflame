@@ -12,6 +12,8 @@ import {
   WidgetSettings,
   ChatUISettings,
 } from '../../../shared/constants/ui-defaults'
+import { BigQueryLogger } from './bq-logger'
+import { createAuditMiddleware } from './middleware/audit'
 
 type D1Result<T = unknown> = {
   results?: T[]
@@ -48,6 +50,11 @@ type Bindings = {
   MGMT_HTTP_TIMEOUT_SEC?: string
   ASSETS_BUCKET: R2Bucket
   ASSETS_PUBLIC_URL?: string
+  // BigQuery logging
+  GCP_PROJECT_ID?: string
+  BQ_DATASET_ID?: string
+  GCP_SERVICE_ACCOUNT_KEY?: string
+  // Sentry error tracking
   SENTRY_DSN?: string
   SENTRY_ENVIRONMENT?: string
 }
@@ -55,6 +62,7 @@ type Bindings = {
 type Variables = {
   user?: FirebaseUser
   config?: Config
+  bqLogger?: BigQueryLogger
 }
 
 type Config = {
@@ -102,8 +110,24 @@ type KnowledgeAsset = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
 
+// Initialize BigQuery logger
+let bqLoggerInstance: BigQueryLogger | null = null
+
+function getBqLogger(env: Bindings): BigQueryLogger {
+  if (!bqLoggerInstance) {
+    bqLoggerInstance = new BigQueryLogger(
+      env.GCP_PROJECT_ID || '',
+      env.BQ_DATASET_ID || 'ai_chat_logs',
+      'management_audit_logs',
+      env.GCP_SERVICE_ACCOUNT_KEY
+    )
+  }
+  return bqLoggerInstance
+}
+
 app.use('*', async (c, next) => {
   c.set('config', loadConfig(c.env))
+  c.set('bqLogger', getBqLogger(c.env))
   const cfg = getConfig(c)
   const origin = c.req.header('Origin') || ''
   if (originAllowed(origin, cfg.allowedOrigins)) {
@@ -115,6 +139,16 @@ app.use('*', async (c, next) => {
   c.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS')
   if (c.req.method === 'OPTIONS') {
     return c.body(null, 204)
+  }
+  return next()
+})
+
+// Audit logging middleware
+app.use('*', async (c, next) => {
+  const logger = c.get('bqLogger')
+  if (logger && logger.isEnabled()) {
+    const auditMiddleware = createAuditMiddleware(logger)
+    return auditMiddleware(c, next)
   }
   return next()
 })
@@ -179,7 +213,6 @@ app.post('/api/chats', async (c) => {
   const user = c.get('user') as FirebaseUser
 
   const payload = await readJson<{
-    id: string
     target?: string
     targets?: string[]
     target_type?: string
@@ -190,16 +223,13 @@ app.post('/api/chats', async (c) => {
     return jsonError(c, 400, 'invalid json')
   }
 
-  const id = sanitizeAlias(payload.id)
-  if (!id) {
-    return jsonError(c, 400, 'id is required')
-  }
+  const id = crypto.randomUUID()
   const targetType = normalizeTargetType(payload.target_type)
   const targets = normalizeTargets(payload.targets, payload.target, targetType)
   if (targets.length === 0) {
     return jsonError(c, 400, 'at least one target is required')
   }
-  const displayName = (payload.display_name || '').trim() || id
+  const displayName = (payload.display_name || '').trim() || '新しいチャット'
   const systemPrompt = payload.system_prompt || ''
   const ownerUserId = user.uid
 

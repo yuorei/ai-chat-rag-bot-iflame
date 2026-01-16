@@ -407,6 +407,7 @@
         const CHAT_ID = urlParams.get('chatId') || urlParams.get('chat_id') || urlParams.get('tenantId') || urlParams.get('tenant_id');
         const apiBaseParam = urlParams.get('apiBase');
         const API_BASE = normalizeApiBase(apiBaseParam || window.location.origin);
+        const PARENT_ORIGIN = urlParams.get('parentOrigin') || '';
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
 
@@ -477,6 +478,9 @@
                 const payload = { message };
                 if (CHAT_ID) {
                     payload.chat_id = CHAT_ID;
+                }
+                if (PARENT_ORIGIN) {
+                    payload.parent_origin = PARENT_ORIGIN;
                 }
 
                 const response = await fetch(`${API_BASE}/chat`, {

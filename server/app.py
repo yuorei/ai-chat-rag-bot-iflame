@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import uuid
 
 import sentry_sdk
 from flask import Flask, jsonify, g, request
@@ -13,6 +14,7 @@ from sentence_transformers import SentenceTransformer
 import settings
 from ai_agent import AIAgent
 from auth import require_admin_auth, require_domain_session
+from bq_logger import log_chat_request
 from domain_registry import DomainRegistry
 from file_utils import add_manual_knowledge, handle_file_upload, handle_url_fetch
 
@@ -26,7 +28,6 @@ if settings.SENTRY_DSN:
         traces_sample_rate=0,
         profiles_sample_rate=0,
         send_default_pii=True,
-        enable_logs=True,
     )
 
 app = Flask(__name__)
@@ -152,14 +153,34 @@ def init_qdrant():
 init_qdrant()
 
 
+@app.before_request
+def before_request():
+    """Set up request context for logging."""
+    g.request_id = str(uuid.uuid4())
+    g.start_time = time.time()
+
+
 @app.route('/api/chat', methods=['POST'])
 @require_domain_session(domain_registry)
 def chat():
+    error_code = None
+    error_message = None
+    response = None
+    context_found = False
+    context_sources_count = 0
+    vector_search_duration_ms = None
+    top_similarity_score = None
+    llm_request_duration_ms = None
+    
+    # Parse request data once to be used in both success and error paths
+    data = request.get_json() or {}
+    query = data.get('message', '')
+    parent_origin = data.get('parent_origin')
+    chat_entry = getattr(g, 'chat', {})
+    chat_id = chat_entry.get('id')
+    client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
+
     try:
-        data = request.get_json() or {}
-        query = data.get('message', '')
-        chat_entry = getattr(g, 'chat', {})
-        chat_id = chat_entry.get('id')
         if not chat_id:
             return jsonify({'error': 'Chat configuration is invalid'}), 500
         system_prompt = chat_entry.get('system_prompt')
@@ -174,11 +195,11 @@ def chat():
         print(json.dumps(request_log, ensure_ascii=False), flush=True)
 
         context = ""
-        context_found = False
 
         # ベクター検索を実行
         if qdrant_client and embedding_model:
             try:
+                vector_search_start = time.time()
                 query_vector = embedding_model.encode(query).tolist()
 
                 search_filter = Filter(
@@ -202,8 +223,11 @@ def chat():
                     limit=10,
                     query_filter=search_filter,
                 )
+                vector_search_duration_ms = int((time.time() - vector_search_start) * 1000)
+
                 print(f"Vector search results: {len(search_result)} candidates found")
                 if search_result:
+                    top_similarity_score = search_result[0].score if search_result else None
                     context_items = []
                     for i, point in enumerate(search_result):
                         print(
@@ -218,6 +242,7 @@ def chat():
                     if context_items:
                         context = "\n---\n".join(context_items)
                         context_found = True
+                        context_sources_count = len(context_items)
                         print(
                             f"Final context items: {len(context_items)}, total context length: {len(context)}"
                         )
@@ -240,26 +265,73 @@ def chat():
         }
         print(json.dumps(llm_input_log, ensure_ascii=False), flush=True)
 
+        llm_start = time.time()
         response = ai_agent.think_and_respond(query, context, system_prompt=system_prompt)
+        llm_request_duration_ms = int((time.time() - llm_start) * 1000)
 
         response_data = {
             'response': response,
             'context_found': context_found,
-            'sources_used': len(context.split("\n---\n")) if context_found else 0,
+            'sources_used': context_sources_count,
         }
         if os.getenv('FLASK_ENV') == 'development':
             response_data['chat_id'] = chat_id
 
+        # BigQuery logging
+        total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
+        log_chat_request(
+            chat_id=chat_id,
+            query=query,
+            response=response,
+            request_id=getattr(g, 'request_id', None),
+            user_agent=request.headers.get('User-Agent'),
+            origin_domain=parent_origin or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
+            context_found=context_found,
+            context_sources_count=context_sources_count,
+            vector_search_duration_ms=vector_search_duration_ms,
+            top_similarity_score=top_similarity_score,
+            llm_model=settings.GEMINI_MODEL_NAME,
+            llm_request_duration_ms=llm_request_duration_ms,
+            total_duration_ms=total_duration_ms,
+            client_ip=client_ip,
+        )
+
         return jsonify(response_data)
 
     except Exception as e:
+        error_code = 'INTERNAL_ERROR'
+        error_message = str(e)
+
+        # Log error to BigQuery
+        total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
+        log_chat_request(
+            chat_id=chat_id if chat_id else 'unknown',
+            query=query,
+            response='',
+            request_id=getattr(g, 'request_id', None),
+            user_agent=request.headers.get('User-Agent'),
+            origin_domain=parent_origin or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
+            context_found=context_found,
+            context_sources_count=context_sources_count,
+            vector_search_duration_ms=vector_search_duration_ms,
+            top_similarity_score=top_similarity_score,
+            llm_model=settings.GEMINI_MODEL_NAME,
+            llm_request_duration_ms=llm_request_duration_ms,
+            total_duration_ms=total_duration_ms,
+            error_code=error_code,
+            error_message=error_message,
+            client_ip=client_ip,
+        )
+
+        # Report to Sentry
         if settings.SENTRY_DSN:
             sentry_sdk.set_context("chat", {
-                "chat_id": chat_id if 'chat_id' in dir() else None,
-                "query": query if 'query' in dir() else None,
-                "context_found": context_found if 'context_found' in dir() else None,
+                "chat_id": chat_id,
+                "query": query,
+                "context_found": context_found,
             })
             sentry_sdk.capture_exception(e)
+
         return jsonify({'error': str(e)}), 500
 
 

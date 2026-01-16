@@ -241,7 +241,7 @@ app.post('/init', async (c) => {
 // POST /chat - Forward chat message to Python server
 // ---------------------------------------------------------------------------
 app.post('/chat', async (c) => {
-  let body: { message?: string; chat_id?: string; target?: string }
+  let body: { message?: string; chat_id?: string; target?: string; parent_origin?: string }
 
   try {
     body = await c.req.json()
@@ -249,7 +249,7 @@ app.post('/chat', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }
 
-  const { message, chat_id, target } = body
+  const { message, chat_id, target, parent_origin } = body
 
   if (!message) {
     return c.json({ error: 'message is required' }, 400)
@@ -308,14 +308,35 @@ app.post('/chat', async (c) => {
       messageLength: message.length,
     }))
 
+    // Forward original client headers to Python server
+    const forwardHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+    }
+    const userAgent = c.req.header('User-Agent')
+    if (userAgent) {
+      forwardHeaders['User-Agent'] = userAgent
+    }
+    const origin = c.req.header('Origin')
+    if (origin) {
+      forwardHeaders['X-Original-Origin'] = origin
+    }
+    const referer = c.req.header('Referer')
+    if (referer) {
+      forwardHeaders['X-Original-Referer'] = referer
+    }
+    // Forward client IP from Cloudflare
+    const clientIp = c.req.header('CF-Connecting-IP')
+    if (clientIp) {
+      forwardHeaders['X-Forwarded-For'] = clientIp
+    }
+
     const response = await fetch(pythonUrl, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: forwardHeaders,
       body: JSON.stringify({
         message,
         chat_id: resolvedChatId,
+        parent_origin: parent_origin ?? null,
       }),
     })
 
