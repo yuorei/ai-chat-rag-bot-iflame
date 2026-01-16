@@ -171,13 +171,16 @@ def chat():
     vector_search_duration_ms = None
     top_similarity_score = None
     llm_request_duration_ms = None
+    
+    # Parse request data once to be used in both success and error paths
+    data = request.get_json() or {}
+    query = data.get('message', '')
+    parent_origin = data.get('parent_origin')
+    chat_entry = getattr(g, 'chat', {})
+    chat_id = chat_entry.get('id')
+    client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
 
     try:
-        data = request.get_json() or {}
-        query = data.get('message', '')
-        parent_origin = data.get('parent_origin')
-        chat_entry = getattr(g, 'chat', {})
-        chat_id = chat_entry.get('id')
         if not chat_id:
             return jsonify({'error': 'Chat configuration is invalid'}), 500
         system_prompt = chat_entry.get('system_prompt')
@@ -276,7 +279,6 @@ def chat():
 
         # BigQuery logging
         total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
-        client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
         log_chat_request(
             chat_id=chat_id,
             query=query,
@@ -302,19 +304,13 @@ def chat():
 
         # Log error to BigQuery
         total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
-        data = request.get_json() or {}
-        query = data.get('message', '')
-        parent_origin_err = data.get('parent_origin')
-        chat_entry = getattr(g, 'chat', {})
-        chat_id = chat_entry.get('id', 'unknown')
-        client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
         log_chat_request(
-            chat_id=chat_id,
+            chat_id=chat_id if chat_id else 'unknown',
             query=query,
             response='',
             request_id=getattr(g, 'request_id', None),
             user_agent=request.headers.get('User-Agent'),
-            origin_domain=parent_origin_err or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
+            origin_domain=parent_origin or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
             context_found=context_found,
             context_sources_count=context_sources_count,
             vector_search_duration_ms=vector_search_duration_ms,
