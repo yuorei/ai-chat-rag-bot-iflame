@@ -175,6 +175,7 @@ def chat():
     try:
         data = request.get_json() or {}
         query = data.get('message', '')
+        parent_origin = data.get('parent_origin')
         chat_entry = getattr(g, 'chat', {})
         chat_id = chat_entry.get('id')
         if not chat_id:
@@ -282,7 +283,7 @@ def chat():
             response=response,
             request_id=getattr(g, 'request_id', None),
             user_agent=request.headers.get('User-Agent'),
-            origin_domain=request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
+            origin_domain=parent_origin or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
             context_found=context_found,
             context_sources_count=context_sources_count,
             vector_search_duration_ms=vector_search_duration_ms,
@@ -303,6 +304,7 @@ def chat():
         total_duration_ms = int((time.time() - g.start_time) * 1000) if hasattr(g, 'start_time') else None
         data = request.get_json() or {}
         query = data.get('message', '')
+        parent_origin_err = data.get('parent_origin')
         chat_entry = getattr(g, 'chat', {})
         chat_id = chat_entry.get('id', 'unknown')
         client_ip = request.headers.get('X-Forwarded-For', '').split(',')[0].strip() or request.remote_addr
@@ -312,7 +314,7 @@ def chat():
             response='',
             request_id=getattr(g, 'request_id', None),
             user_agent=request.headers.get('User-Agent'),
-            origin_domain=request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
+            origin_domain=parent_origin_err or request.headers.get('X-Original-Origin') or request.headers.get('Origin'),
             context_found=context_found,
             context_sources_count=context_sources_count,
             vector_search_duration_ms=vector_search_duration_ms,

@@ -241,7 +241,7 @@ app.post('/init', async (c) => {
 // POST /chat - Forward chat message to Python server
 // ---------------------------------------------------------------------------
 app.post('/chat', async (c) => {
-  let body: { message?: string; chat_id?: string; target?: string }
+  let body: { message?: string; chat_id?: string; target?: string; parent_origin?: string }
 
   try {
     body = await c.req.json()
@@ -249,7 +249,7 @@ app.post('/chat', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400)
   }
 
-  const { message, chat_id, target } = body
+  const { message, chat_id, target, parent_origin } = body
 
   if (!message) {
     return c.json({ error: 'message is required' }, 400)
@@ -336,6 +336,7 @@ app.post('/chat', async (c) => {
       body: JSON.stringify({
         message,
         chat_id: resolvedChatId,
+        parent_origin: parent_origin || null,
       }),
     })
 
