@@ -54,3 +54,40 @@ export type Suggestion = {
   order_index: number;
   enabled: boolean;
 };
+
+// Analytics types
+export type AnalyticsSummary = {
+  date: string;
+  totalMessages: number;
+  uniqueSessions: number;
+  avgResponseTimeMs: number;
+  contextFoundRate: number;
+  errorRate: number;
+  totalTokensUsed: number;
+};
+
+export type AnalyticsOverview = {
+  totalMessages: number;
+  totalSessions: number;
+  avgResponseTimeMs: number;
+  errorRate: number;
+  contextFoundRate: number;
+  totalTokensUsed: number;
+};
+
+export type HourlyDistribution = {
+  hour: number;
+  messageCount: number;
+};
+
+export type DomainBreakdown = {
+  originDomain: string;
+  messageCount: number;
+  avgResponseTimeMs: number;
+};
+
+export type DeviceBreakdown = {
+  deviceType: string;
+  browser: string;
+  messageCount: number;
+};
