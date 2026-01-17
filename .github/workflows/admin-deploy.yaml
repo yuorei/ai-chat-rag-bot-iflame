@@ -63,4 +63,5 @@ jobs:
             --image ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             --platform managed \
             --port 3000 \
+            --allow-unauthenticated \
             --quiet
