@@ -82,3 +82,9 @@ variable "authorized_members" {
   type        = list(string)
   default     = []
 }
+
+variable "allow_unauthenticated" {
+  description = "Allow unauthenticated access to the service (for app-level auth)"
+  type        = bool
+  default     = false
+}

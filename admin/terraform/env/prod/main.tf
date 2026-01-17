@@ -61,6 +61,14 @@ module "iam" {
   service_account_id = "admin-dashboard-sa"
 }
 
+# Extract email addresses from authorized_members (remove "user:" prefix)
+locals {
+  authorized_emails = join(",", [
+    for member in var.authorized_members :
+    trimprefix(member, "user:")
+  ])
+}
+
 # Cloud Run service
 module "cloud_run" {
   source = "../../modules/cloud_run"
@@ -77,6 +85,7 @@ module "cloud_run" {
 
   service_account_email = module.iam.service_account_email
   authorized_members    = var.authorized_members
+  allow_unauthenticated = var.allow_unauthenticated
 
   environment_variables = {
     MANAGEMENT_API_BASE_URL = var.management_api_base_url
@@ -84,6 +93,11 @@ module "cloud_run" {
     GCP_PROJECT_ID          = var.project_id
     BQ_DATASET_ID           = var.bq_dataset_id
     NODE_ENV                = "production"
+    NEXTAUTH_SECRET         = var.nextauth_secret
+    GOOGLE_CLIENT_ID        = var.google_client_id
+    GOOGLE_CLIENT_SECRET    = var.google_client_secret
+    AUTHORIZED_EMAILS       = local.authorized_emails
+    AUTH_TRUST_HOST         = "true"
   }
 
   depends_on = [

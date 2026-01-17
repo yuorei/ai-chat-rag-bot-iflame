@@ -56,13 +56,24 @@ resource "google_cloud_run_v2_service" "admin" {
   }
 }
 
-# IAM binding for authorized members (no public access)
+# IAM binding for authorized members (when not using app-level auth)
 resource "google_cloud_run_v2_service_iam_member" "invoker" {
-  for_each = toset(var.authorized_members)
+  for_each = var.allow_unauthenticated ? toset([]) : toset(var.authorized_members)
 
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.admin.name
   role     = "roles/run.invoker"
   member   = each.value
+}
+
+# Allow unauthenticated access (for app-level auth)
+resource "google_cloud_run_v2_service_iam_member" "public" {
+  count = var.allow_unauthenticated ? 1 : 0
+
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.admin.name
+  role     = "roles/run.invoker"
+  member   = "allUsers"
 }

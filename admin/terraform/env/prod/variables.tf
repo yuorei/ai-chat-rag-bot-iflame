@@ -59,3 +59,26 @@ variable "bq_dataset_id" {
   description = "BigQuery dataset ID for analytics"
   type        = string
 }
+
+variable "allow_unauthenticated" {
+  description = "Allow unauthenticated access (use app-level auth instead of Cloud Run IAM)"
+  type        = bool
+  default     = true
+}
+
+variable "nextauth_secret" {
+  description = "Secret for NextAuth.js session encryption"
+  type        = string
+  sensitive   = true
+}
+
+variable "google_client_id" {
+  description = "Google OAuth Client ID"
+  type        = string
+}
+
+variable "google_client_secret" {
+  description = "Google OAuth Client Secret"
+  type        = string
+  sensitive   = true
+}
