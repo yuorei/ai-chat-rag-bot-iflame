@@ -8,6 +8,7 @@ on:
     paths:
       - "admin/ai-chat-admin/**"
       - ".github/workflows/admin-deploy.yaml"
+  
   workflow_dispatch:
 
 env:
