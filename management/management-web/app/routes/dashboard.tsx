@@ -10,6 +10,7 @@ import { NotificationBanner } from "../components/dashboard/NotificationBanner";
 import { ChatsTab, type ChatFormData } from "../components/dashboard/ChatsTab";
 import { KnowledgeTab } from "../components/dashboard/KnowledgeTab";
 import { KnowledgeModal } from "../components/dashboard/KnowledgeModal";
+import { ConfirmModal } from "../components/dashboard/ConfirmModal";
 import { UIEditorTab } from "../components/dashboard/UIEditorTab";
 import { AnalyticsTab } from "../components/dashboard/AnalyticsTab";
 
@@ -47,6 +48,21 @@ export default function Dashboard() {
   const [submittingURL, setSubmittingURL] = useState(false);
   const [submittingText, setSubmittingText] = useState(false);
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeAsset | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel: string;
+    variant: "danger" | "warning" | "info";
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    confirmLabel: "確認",
+    variant: "warning",
+    onConfirm: () => {},
+  });
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
 
   useEffect(() => {
@@ -133,17 +149,11 @@ export default function Dashboard() {
     }
   };
 
-  const submitChat = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const executeSubmitChat = async (targets: string[], isUpdate: boolean) => {
     setStatus(null);
     setError(null);
     try {
-      const targets = chatForm.targets.map((t) => t.trim()).filter(Boolean);
-      if (targets.length === 0) {
-        setError("利用先ドメインを1つ以上入力してください");
-        return;
-      }
-      if (editingChatId) {
+      if (isUpdate && editingChatId) {
         const res = await apiFetch<ChatProfile>(`/api/chats/${editingChatId}`, {
           method: "PUT",
           body: JSON.stringify({
@@ -175,6 +185,33 @@ export default function Dashboard() {
       } else {
         setError((err as Error).message);
       }
+    }
+  };
+
+  const submitChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    const targets = chatForm.targets.map((t) => t.trim()).filter(Boolean);
+    if (targets.length === 0) {
+      setError("利用先ドメインを1つ以上入力してください");
+      return;
+    }
+
+    if (editingChatId) {
+      // 更新時は確認モーダルを表示
+      setConfirmModal({
+        isOpen: true,
+        title: "チャット設定の更新",
+        message: "チャット設定を更新しますか？",
+        confirmLabel: "更新",
+        variant: "warning",
+        onConfirm: () => {
+          closeConfirmModal();
+          executeSubmitChat(targets, true);
+        },
+      });
+    } else {
+      // 新規作成時は確認なしで実行
+      executeSubmitChat(targets, false);
     }
   };
 
@@ -282,21 +319,34 @@ export default function Dashboard() {
     }
   };
 
-  const deleteKnowledge = async (id: string) => {
-    if (!window.confirm("このナレッジを削除しますか？")) return;
-    setStatus(null);
-    setError(null);
-    try {
-      await apiFetch(`/api/knowledge/${id}`, { method: "DELETE" });
-      setStatus("ナレッジを削除しました");
-      loadKnowledge();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        nav("/login");
-      } else {
-        setError((err as Error).message);
-      }
-    }
+  const closeConfirmModal = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const deleteKnowledge = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "ナレッジの削除",
+      message: "このナレッジを削除しますか？この操作は取り消せません。",
+      confirmLabel: "削除",
+      variant: "danger",
+      onConfirm: async () => {
+        closeConfirmModal();
+        setStatus(null);
+        setError(null);
+        try {
+          await apiFetch(`/api/knowledge/${id}`, { method: "DELETE" });
+          setStatus("ナレッジを削除しました");
+          loadKnowledge();
+        } catch (err) {
+          if (err instanceof AuthError) {
+            nav("/login");
+          } else {
+            setError((err as Error).message);
+          }
+        }
+      },
+    });
   };
 
   const logout = async () => {
@@ -328,27 +378,36 @@ export default function Dashboard() {
     setChatForm(emptyChatForm);
   };
 
-  const deleteChat = async (id: string) => {
-    if (!window.confirm(`チャット ${id} を削除しますか？`)) return;
-    setStatus(null);
-    setError(null);
-    try {
-      await apiFetch(`/api/chats/${id}`, { method: "DELETE" });
-      setStatus(`チャット ${id} を削除しました`);
-      if (activeChatId === id) {
-        setActiveChatId("");
-      }
-      if (editingChatId === id) {
-        cancelEdit();
-      }
-      loadChats();
-    } catch (err) {
-      if (err instanceof AuthError) {
-        nav("/login");
-      } else {
-        setError((err as Error).message);
-      }
-    }
+  const deleteChat = (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "チャットの削除",
+      message: `チャット "${id}" を削除しますか？関連するすべてのデータが削除されます。`,
+      confirmLabel: "削除",
+      variant: "danger",
+      onConfirm: async () => {
+        closeConfirmModal();
+        setStatus(null);
+        setError(null);
+        try {
+          await apiFetch(`/api/chats/${id}`, { method: "DELETE" });
+          setStatus(`チャット ${id} を削除しました`);
+          if (activeChatId === id) {
+            setActiveChatId("");
+          }
+          if (editingChatId === id) {
+            cancelEdit();
+          }
+          loadChats();
+        } catch (err) {
+          if (err instanceof AuthError) {
+            nav("/login");
+          } else {
+            setError((err as Error).message);
+          }
+        }
+      },
+    });
   };
 
   const handleViewKnowledge = (knowledge: KnowledgeAsset) => {
@@ -472,6 +531,17 @@ export default function Dashboard() {
           setStatus={setStatus}
         />
       )}
+
+      {/* 確認モーダル */}
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmLabel={confirmModal.confirmLabel}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirmModal}
+      />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, Save, Edit2, Eye, RefreshCw, AlertCircle } from "lucide-react";
 import type { KnowledgeAsset } from "../../lib/types";
 import { fetchKnowledgeContent, updateKnowledge } from "../../lib/api";
+import { ConfirmModal } from "./ConfirmModal";
 
 type KnowledgeModalProps = {
   knowledge: KnowledgeAsset | null;
@@ -26,6 +27,7 @@ export function KnowledgeModal({
   const [originalTitle, setOriginalTitle] = useState("");
   const [originalText, setOriginalText] = useState("");
   const [editable, setEditable] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -91,8 +93,13 @@ export function KnowledgeModal({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose, loading]);
 
-  const handleSave = async () => {
+  const handleSaveClick = () => {
+    setShowConfirm(true);
+  };
+
+  const executeSave = async () => {
     if (!knowledge) return;
+    setShowConfirm(false);
     setSaving(true);
     setError(null);
 
@@ -258,7 +265,7 @@ export function KnowledgeModal({
                 キャンセル
               </button>
               <button
-                onClick={handleSave}
+                onClick={handleSaveClick}
                 disabled={saving || !hasChanges}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:bg-gray-300 rounded-lg transition-colors"
               >
@@ -296,6 +303,17 @@ export function KnowledgeModal({
           )}
         </div>
       </div>
+
+      {/* 更新確認モーダル */}
+      <ConfirmModal
+        isOpen={showConfirm}
+        title="ナレッジの更新"
+        message="ナレッジを更新しますか？"
+        confirmLabel="更新"
+        variant="warning"
+        onConfirm={executeSave}
+        onCancel={() => setShowConfirm(false)}
+      />
     </div>
   );
 }
