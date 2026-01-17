@@ -171,6 +171,8 @@ def chat():
     vector_search_duration_ms = None
     top_similarity_score = None
     llm_request_duration_ms = None
+    tokens_input = None
+    tokens_output = None
     
     # Parse request data once to be used in both success and error paths
     data = request.get_json() or {}
@@ -266,7 +268,7 @@ def chat():
         print(json.dumps(llm_input_log, ensure_ascii=False), flush=True)
 
         llm_start = time.time()
-        response = ai_agent.think_and_respond(query, context, system_prompt=system_prompt)
+        response, tokens_input, tokens_output = ai_agent.think_and_respond(query, context, system_prompt=system_prompt)
         llm_request_duration_ms = int((time.time() - llm_start) * 1000)
 
         response_data = {
@@ -294,6 +296,8 @@ def chat():
             llm_request_duration_ms=llm_request_duration_ms,
             total_duration_ms=total_duration_ms,
             client_ip=client_ip,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
         )
 
         return jsonify(response_data)
@@ -321,6 +325,8 @@ def chat():
             error_code=error_code,
             error_message=error_message,
             client_ip=client_ip,
+            tokens_input=tokens_input,
+            tokens_output=tokens_output,
         )
 
         # Report to Sentry

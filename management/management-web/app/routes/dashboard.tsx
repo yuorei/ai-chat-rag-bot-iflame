@@ -11,6 +11,7 @@ import { ChatsTab, type ChatFormData } from "../components/dashboard/ChatsTab";
 import { KnowledgeTab } from "../components/dashboard/KnowledgeTab";
 import { KnowledgeModal } from "../components/dashboard/KnowledgeModal";
 import { UIEditorTab } from "../components/dashboard/UIEditorTab";
+import { AnalyticsTab } from "../components/dashboard/AnalyticsTab";
 
 const STORAGE_KEY = "ai-chat-management:lastEditedChatId";
 
@@ -33,7 +34,7 @@ export default function Dashboard() {
   const [loadingChats, setLoadingChats] = useState(false);
   const [loadingKnowledge, setLoadingKnowledge] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chats" | "knowledge" | "ui-editor">("chats");
+  const [activeTab, setActiveTab] = useState<"chats" | "knowledge" | "ui-editor" | "analytics">("chats");
   const emptyChatForm: ChatFormData = { id: "", targets: [""], display_name: "", system_prompt: "" };
   const [chatForm, setChatForm] = useState<ChatFormData>(emptyChatForm);
   const [fileForm, setFileForm] = useState<{ title: string; file: File | null }>({
@@ -450,6 +451,12 @@ export default function Dashboard() {
               activeChatId={activeChatId}
               setStatus={setStatus}
               setError={setError}
+            />
+          )}
+          {activeTab === "analytics" && (
+            <AnalyticsTab
+              activeChat={activeChat}
+              activeChatId={activeChatId}
             />
           )}
         </div>

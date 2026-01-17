@@ -54,3 +54,61 @@ export type Suggestion = {
   order_index: number;
   enabled: boolean;
 };
+
+// Analytics types
+export type AnalyticsSummary = {
+  date: string;
+  totalMessages: number;
+  uniqueSessions: number;
+  avgResponseTimeMs: number;
+  contextFoundRate: number;
+  errorRate: number;
+  totalTokensUsed: number;
+};
+
+export type AnalyticsOverview = {
+  totalMessages: number;
+  totalSessions: number;
+  avgResponseTimeMs: number;
+  errorRate: number;
+  contextFoundRate: number;
+  totalTokensUsed: number;
+};
+
+export type HourlyDistribution = {
+  hour: number;
+  messageCount: number;
+};
+
+export type DomainBreakdown = {
+  originDomain: string;
+  messageCount: number;
+  avgResponseTimeMs: number;
+};
+
+export type DeviceBreakdown = {
+  deviceType: string;
+  browser: string;
+  messageCount: number;
+};
+
+export type ChatMessage = {
+  eventId: string;
+  eventTimestamp: string;
+  chatId: string;
+  messageContent: string | null;
+  responseContent: string | null;
+  originDomain: string | null;
+  totalDurationMs: number | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  contextFound: boolean | null;
+  errorCode: string | null;
+};
+
+export type MessageListResponse = {
+  messages: ChatMessage[];
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+};

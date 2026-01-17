@@ -1,5 +1,5 @@
 import { getFirebaseAuth } from './firebase'
-import type { ChatUISettings, ThemeSettings, WidgetSettings, KnowledgeAssetWithContent, Suggestion } from './types';
+import type { ChatUISettings, ThemeSettings, WidgetSettings, KnowledgeAssetWithContent, Suggestion, AnalyticsSummary, AnalyticsOverview, HourlyDistribution, DomainBreakdown, DeviceBreakdown, MessageListResponse } from './types';
 
 const fallbackBase =
   import.meta.env.VITE_MANAGEMENT_API_BASE_URL ?? "http://localhost:8100";
@@ -240,6 +240,98 @@ export async function updateSuggestions(
     body: JSON.stringify({ suggestions }),
   });
   return data.suggestions || [];
+}
+
+// --- Analytics API ---
+
+export async function fetchAnalyticsSummary(
+  chatId: string,
+  startDate: string,
+  endDate: string
+): Promise<AnalyticsSummary[]> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+  const data = await apiFetch<{ data: AnalyticsSummary[] }>(`/api/analytics/summary?${params}`);
+  return data.data || [];
+}
+
+export async function fetchAnalyticsOverview(
+  chatId: string,
+  startDate: string,
+  endDate: string
+): Promise<AnalyticsOverview> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+  return apiFetch<AnalyticsOverview>(`/api/analytics/overview?${params}`);
+}
+
+export async function fetchHourlyDistribution(
+  chatId: string,
+  startDate: string,
+  endDate: string
+): Promise<HourlyDistribution[]> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+  const data = await apiFetch<{ data: HourlyDistribution[] }>(`/api/analytics/hourly?${params}`);
+  return data.data || [];
+}
+
+export async function fetchDomainBreakdown(
+  chatId: string,
+  startDate: string,
+  endDate: string
+): Promise<DomainBreakdown[]> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+  const data = await apiFetch<{ data: DomainBreakdown[] }>(`/api/analytics/domains?${params}`);
+  return data.data || [];
+}
+
+export async function fetchDeviceBreakdown(
+  chatId: string,
+  startDate: string,
+  endDate: string
+): Promise<DeviceBreakdown[]> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+  });
+  const data = await apiFetch<{ data: DeviceBreakdown[] }>(`/api/analytics/devices?${params}`);
+  return data.data || [];
+}
+
+export async function fetchMessages(
+  chatId: string,
+  startDate: string,
+  endDate: string,
+  limit: number = 50,
+  offset: number = 0,
+  searchQuery?: string
+): Promise<MessageListResponse> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+  if (searchQuery) {
+    params.append('search', searchQuery);
+  }
+  return apiFetch<MessageListResponse>(`/api/analytics/messages?${params}`);
 }
 
 declare global {

@@ -1,18 +1,15 @@
 import traceback
 
-import google.generativeai as genai
+from google import genai
 from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError, ResourceExhausted
 
 import settings
 
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
-
-
 class AIAgent:
     def __init__(self, model_name=None):
         self.model_name = model_name or settings.GEMINI_MODEL_NAME
-        self.model = genai.GenerativeModel(self.model_name)
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.system_prompt = (
             """
         あなたは親しみやすく知識豊富なAIチャットボットです。
@@ -51,8 +48,12 @@ class AIAgent:
         return f"{base_message}\n\n【参考情報（ナレッジからの抜粋）】\n{snippet}"
 
     def think_and_respond(self, query, context="", system_prompt=None):
+        """
+        Returns a tuple: (response_text, tokens_input, tokens_output)
+        If token info is unavailable, tokens will be None.
+        """
         if not context.strip():
-            return "申し訳ありませんが、お尋ねの件について保存されている情報が見つかりませんでした。もう少し詳しく教えていただけますでしょうか？"
+            return ("申し訳ありませんが、お尋ねの件について保存されている情報が見つかりませんでした。もう少し詳しく教えていただけますでしょうか？", None, None)
 
         prompt_header = system_prompt if system_prompt else self.system_prompt
 
@@ -77,23 +78,31 @@ class AIAgent:
         """
 
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
+            tokens_input = None
+            tokens_output = None
+            if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                tokens_input = getattr(response.usage_metadata, 'prompt_token_count', None)
+                tokens_output = getattr(response.usage_metadata, 'candidates_token_count', None)
+            return (response.text, tokens_input, tokens_output)
         except DeadlineExceeded as e:
             print("Gemini DeadlineExceeded:", e)
             traceback.print_exc()
-            return "現在AIの応答生成に時間がかかっています。少し待ってからもう一度お試しください。"
+            return ("現在AIの応答生成に時間がかかっています。少し待ってからもう一度お試しください。", None, None)
         except ResourceExhausted as e:
             print("Gemini quota exhausted:", e)
             traceback.print_exc()
             message = "Gemini APIの利用上限に達しました"
-            return self._build_contextual_fallback(context, message)
+            return (self._build_contextual_fallback(context, message), None, None)
         except GoogleAPICallError as e:
             print("Gemini API error:", e)
             traceback.print_exc()
             message = "AIサービスの呼び出しに失敗しました。時間をおいて再度お試しください。"
-            return self._build_contextual_fallback(context, message)
+            return (self._build_contextual_fallback(context, message), None, None)
         except Exception as e:
             print("Unexpected Gemini error:", e)
             traceback.print_exc()
-            return "回答の生成中にエラーが発生しました。別の質問でお試しいただけますか？"
+            return ("回答の生成中にエラーが発生しました。別の質問でお試しいただけますか？", None, None)

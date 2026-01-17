@@ -1,7 +1,7 @@
 import { Menu } from "lucide-react";
 
 type HeaderProps = {
-  activeTab: "chats" | "knowledge" | "ui-editor";
+  activeTab: "chats" | "knowledge" | "ui-editor" | "analytics";
   setSidebarOpen: (open: boolean) => void;
 };
 
@@ -25,6 +25,11 @@ export function Header({
         return {
           title: "デザイン編集",
           description: "チャットUIの外観をカスタマイズします",
+        };
+      case "analytics":
+        return {
+          title: "アナリティクス",
+          description: "チャットの利用状況を分析します",
         };
       default:
         return {
