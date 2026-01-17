@@ -1,18 +1,15 @@
 import traceback
 
-import google.generativeai as genai
+from google import genai
 from google.api_core.exceptions import DeadlineExceeded, GoogleAPICallError, ResourceExhausted
 
 import settings
 
 
-genai.configure(api_key=settings.GEMINI_API_KEY)
-
-
 class AIAgent:
     def __init__(self, model_name=None):
         self.model_name = model_name or settings.GEMINI_MODEL_NAME
-        self.model = genai.GenerativeModel(self.model_name)
+        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
         self.system_prompt = (
             """
         あなたは親しみやすく知識豊富なAIチャットボットです。
@@ -81,7 +78,10 @@ class AIAgent:
         """
 
         try:
-            response = self.model.generate_content(prompt)
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
+            )
             tokens_input = None
             tokens_output = None
             if hasattr(response, 'usage_metadata') and response.usage_metadata:
