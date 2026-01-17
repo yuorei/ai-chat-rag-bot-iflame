@@ -1288,6 +1288,171 @@ app.get('/api/analytics/messages', async (c) => {
   }
 })
 
+// --- Admin Endpoints (API Key authentication only) ---
+
+// Helper to check admin API key only
+async function ensureAdminApiKey(c: any): Promise<Response | null> {
+  const cfg = getConfig(c)
+  const provided = c.req.header('X-Admin-API-Key') || ''
+  if (!cfg.adminAPIKey || provided !== cfg.adminAPIKey) {
+    return jsonError(c, 401, 'admin api key required')
+  }
+  return null
+}
+
+// GET /api/admin/users - List all users (admin only)
+app.get('/api/admin/users', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const result = await c.env.DB.prepare(
+      `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
+              COUNT(DISTINCT cp.id) as chat_count
+       FROM users u
+       LEFT JOIN chat_profiles cp ON cp.owner_user_id = u.id
+       GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
+       ORDER BY u.created_at DESC
+       LIMIT 1000`
+    ).all<any>()
+
+    const users = (result.results || []).map((row: any) => ({
+      id: row.id as string,
+      email: row.email as string,
+      email_verified: row.email_verified === 1,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+      chat_count: row.chat_count as number,
+    }))
+
+    return c.json({ users })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin users query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin users error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/chats - List all chats (admin only, no ownership filter)
+app.get('/api/admin/chats', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const result = await c.env.DB.prepare(
+      `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
+              cp.owner_user_id, cp.created_at, cp.updated_at,
+              u.email as owner_email,
+              GROUP_CONCAT(DISTINCT ct.target) AS targets
+       FROM chat_profiles cp
+       LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
+       LEFT JOIN users u ON u.id = cp.owner_user_id
+       GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
+                cp.owner_user_id, cp.created_at, cp.updated_at, u.email
+       ORDER BY cp.created_at DESC
+       LIMIT 1000`
+    ).all<any>()
+
+    const chats = (result.results || []).map((row: any) => {
+      const targetsRaw = (row.targets as string) || ''
+      const targets = targetsRaw
+        .split(',')
+        .map((v: string) => v.trim())
+        .filter(Boolean)
+      return {
+        id: row.id as string,
+        target: row.target as string,
+        target_type: row.target_type as string,
+        display_name: row.display_name as string,
+        system_prompt: row.system_prompt as string,
+        owner_user_id: row.owner_user_id as string,
+        owner_email: row.owner_email as string | null,
+        targets,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+      }
+    })
+
+    return c.json({ chats })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin chats query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin chats error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/knowledge - List all knowledge assets (admin only)
+app.get('/api/admin/knowledge', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const result = await c.env.DB.prepare(
+      `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
+              ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
+              ka.created_at, ka.updated_at,
+              cp.display_name as chat_display_name,
+              u.email as owner_email
+       FROM knowledge_assets ka
+       LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
+       LEFT JOIN users u ON u.id = cp.owner_user_id
+       ORDER BY ka.created_at DESC
+       LIMIT 1000`
+    ).all<any>()
+
+    const items = (result.results || []).map((row: any) => ({
+      id: row.id as string,
+      chat_id: row.chat_id as string,
+      chat_display_name: row.chat_display_name as string | null,
+      owner_email: row.owner_email as string | null,
+      type: row.type as string,
+      title: row.title || undefined,
+      source_url: row.source_url || undefined,
+      original_filename: row.original_filename || undefined,
+      storage_path: row.storage_path || undefined,
+      status: row.status as string,
+      embedding_count: Number(row.embedding_count ?? 0),
+      error_message: row.error_message || undefined,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+    }))
+
+    return c.json({ items })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin knowledge query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin knowledge error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/stats - Get overall statistics (admin only)
+app.get('/api/admin/stats', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const [usersResult, chatsResult, knowledgeResult] = await Promise.all([
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>(),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM chat_profiles').first<{ count: number }>(),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM knowledge_assets').first<{ count: number }>(),
+    ])
+
+    return c.json({
+      users_count: usersResult?.count ?? 0,
+      chats_count: chatsResult?.count ?? 0,
+      knowledge_count: knowledgeResult?.count ?? 0,
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin stats query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin stats error: ${errorMessage}`)
+  }
+})
+
 // Wrap the app with Sentry for error tracking
 export default Sentry.withSentry(
   (env: Bindings) => ({
@@ -1398,6 +1563,22 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
   const verificationError = validateEmailVerified(user, c)
   if (verificationError) return verificationError
   c.set('user', user)
+
+  // usersテーブルに自動登録/更新
+  try {
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, email, email_verified, created_at, updated_at)
+       VALUES (?, ?, ?, datetime('now'), datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET
+         email = excluded.email,
+         email_verified = excluded.email_verified,
+         updated_at = datetime('now')`
+    ).bind(user.uid, user.email || '', user.email_verified ? 1 : 0).run()
+  } catch (err) {
+    // usersテーブルが存在しない場合などは無視（後方互換性）
+    console.error('Failed to upsert user:', err)
+  }
+
   return null
 }
 
