@@ -19,7 +19,6 @@ import {
   Globe,
   Smartphone,
   Monitor,
-  Coins,
 } from "lucide-react";
 import type { ChatProfile, AnalyticsSummary, AnalyticsOverview, HourlyDistribution, DomainBreakdown, DeviceBreakdown } from "../../lib/types";
 import {
@@ -224,18 +223,12 @@ export function AnalyticsTab({ activeChat, activeChatId }: AnalyticsTabProps) {
       {!loading && (
         <>
           {/* Overview Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <OverviewCard
               icon={<MessageSquare className="w-5 h-5" />}
               label="総メッセージ数"
               value={formatNumber(overview?.totalMessages || 0)}
               color="blue"
-            />
-            <OverviewCard
-              icon={<Coins className="w-5 h-5" />}
-              label="総トークン使用量"
-              value={formatNumber(overview?.totalTokensUsed || 0)}
-              color="green"
             />
             <OverviewCard
               icon={<AlertCircle className="w-5 h-5" />}
@@ -251,84 +244,41 @@ export function AnalyticsTab({ activeChat, activeChatId }: AnalyticsTabProps) {
             />
           </div>
 
-          {/* Charts Row - Message & Token Trends */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Message Trend Chart */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">メッセージ数の推移</h3>
-              {summary.length > 0 ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <AreaChart data={summary}>
-                    <defs>
-                      <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => value.slice(5)}
-                    />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip
-                      formatter={(value: number) => [value, "メッセージ数"]}
-                      labelFormatter={(label) => `日付: ${label}`}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="totalMessages"
-                      stroke="#3B82F6"
-                      fill="url(#colorMessages)"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <EmptyChart message="データがありません" />
-              )}
-            </div>
-
-            {/* Token Usage Trend Chart */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                <Coins className="w-4 h-4" />
-                トークン使用量の推移
-              </h3>
-              {summary.length > 0 && summary.some((s) => s.totalTokensUsed > 0) ? (
-                <ResponsiveContainer width="100%" height={250}>
-                  <AreaChart data={summary}>
-                    <defs>
-                      <linearGradient id="colorTokens" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{ fontSize: 12 }}
-                      tickFormatter={(value) => value.slice(5)}
-                    />
-                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(value) => formatNumber(value)} />
-                    <Tooltip
-                      formatter={(value: number) => [formatNumber(value), "トークン"]}
-                      labelFormatter={(label) => `日付: ${label}`}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="totalTokensUsed"
-                      stroke="#10B981"
-                      fill="url(#colorTokens)"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <EmptyChart message="トークンデータがありません" />
-              )}
-            </div>
+          {/* Message Trend Chart */}
+          <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-4">メッセージ数の推移</h3>
+            {summary.length > 0 ? (
+              <ResponsiveContainer width="100%" height={250}>
+                <AreaChart data={summary}>
+                  <defs>
+                    <linearGradient id="colorMessages" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: 12 }}
+                    tickFormatter={(value) => value.slice(5)}
+                  />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    formatter={(value: number) => [value, "メッセージ数"]}
+                    labelFormatter={(label) => `日付: ${label}`}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="totalMessages"
+                    stroke="#3B82F6"
+                    fill="url(#colorMessages)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <EmptyChart message="データがありません" />
+            )}
           </div>
 
           {/* Charts Row 2 */}
@@ -479,13 +429,12 @@ function OverviewCard({
   icon: React.ReactNode;
   label: string;
   value: string;
-  color: "blue" | "red" | "purple" | "green";
+  color: "blue" | "red" | "purple";
 }) {
   const colorStyles = {
     blue: "bg-blue-50 text-blue-600",
     red: "bg-red-50 text-red-600",
     purple: "bg-purple-50 text-purple-600",
-    green: "bg-green-50 text-green-600",
   };
 
   return (
