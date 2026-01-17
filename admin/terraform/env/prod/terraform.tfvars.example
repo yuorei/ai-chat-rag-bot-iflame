@@ -1,0 +1,24 @@
+# Copy this file to terraform.tfvars and fill in the values
+
+project_id = "yuovision"
+region     = "asia-northeast1"
+
+# Docker image tag (default: latest)
+image_tag = "latest"
+
+# Cloud Run scaling
+min_instances = 0
+max_instances = 5
+
+# Authorized users/groups who can access the admin dashboard
+# Use the format: "user:email@example.com" or "group:group@example.com"
+authorized_members = [
+  "user:admin@example.com",
+]
+
+# Management Server API
+management_api_base_url = "https://management-server.example.com"
+admin_api_key           = "your-admin-api-key-here"
+
+# BigQuery
+bq_dataset_id = "ai_chat_logs"
