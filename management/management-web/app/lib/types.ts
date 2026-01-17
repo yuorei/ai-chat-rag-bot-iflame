@@ -91,3 +91,24 @@ export type DeviceBreakdown = {
   browser: string;
   messageCount: number;
 };
+
+export type ChatMessage = {
+  eventId: string;
+  eventTimestamp: string;
+  chatId: string;
+  messageContent: string | null;
+  responseContent: string | null;
+  originDomain: string | null;
+  totalDurationMs: number | null;
+  tokensInput: number | null;
+  tokensOutput: number | null;
+  contextFound: boolean | null;
+  errorCode: string | null;
+};
+
+export type MessageListResponse = {
+  messages: ChatMessage[];
+  totalCount: number;
+  hasMore: boolean;
+  nextOffset: number;
+};

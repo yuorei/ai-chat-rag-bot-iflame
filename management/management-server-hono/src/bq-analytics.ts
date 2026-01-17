@@ -42,6 +42,27 @@ export interface DeviceBreakdown {
   messageCount: number
 }
 
+export interface ChatMessage {
+  eventId: string
+  eventTimestamp: string
+  chatId: string
+  messageContent: string | null
+  responseContent: string | null
+  originDomain: string | null
+  totalDurationMs: number | null
+  tokensInput: number | null
+  tokensOutput: number | null
+  contextFound: boolean | null
+  errorCode: string | null
+}
+
+export interface MessageListResponse {
+  messages: ChatMessage[]
+  totalCount: number
+  hasMore: boolean
+  nextOffset: number
+}
+
 interface ServiceAccountCredentials {
   type: string
   project_id: string
@@ -350,6 +371,106 @@ export class BigQueryAnalytics {
       browser: row.f[1].v || 'Unknown',
       messageCount: parseInt(row.f[2].v || '0', 10),
     }))
+  }
+
+  async getMessages(
+    chatId: string,
+    startDate: string,
+    endDate: string,
+    limit: number = 50,
+    offset: number = 0,
+    searchQuery?: string
+  ): Promise<MessageListResponse> {
+    if (!this.isEnabled()) {
+      return { messages: [], totalCount: 0, hasMore: false, nextOffset: offset }
+    }
+
+    // First, get total count
+    const countQuery = `
+      SELECT COUNT(*) as total_count
+      FROM \`${this.projectId}.${this.datasetId}.chatbot_events\`
+      WHERE chat_id = @chatId
+        AND DATE(event_timestamp) BETWEEN @startDate AND @endDate
+        AND event_type = 'chat_request'
+        AND (
+          @searchQuery IS NULL
+          OR @searchQuery = ''
+          OR LOWER(COALESCE(message_content, '')) LIKE CONCAT('%', LOWER(@searchQuery), '%')
+          OR LOWER(COALESCE(response_content, '')) LIKE CONCAT('%', LOWER(@searchQuery), '%')
+        )
+    `
+
+    const countResult = await this.executeQuery(countQuery, {
+      chatId: { value: chatId, type: 'STRING' },
+      startDate: { value: startDate, type: 'DATE' },
+      endDate: { value: endDate, type: 'DATE' },
+      searchQuery: { value: searchQuery || '', type: 'STRING' },
+    })
+
+    const totalCount = countResult.rows?.[0]
+      ? parseInt(countResult.rows[0].f[0].v || '0', 10)
+      : 0
+
+    // Then get the paginated messages
+    const query = `
+      SELECT
+        event_id,
+        event_timestamp,
+        chat_id,
+        message_content,
+        response_content,
+        origin_domain,
+        total_duration_ms,
+        tokens_input,
+        tokens_output,
+        context_found,
+        error_code
+      FROM \`${this.projectId}.${this.datasetId}.chatbot_events\`
+      WHERE chat_id = @chatId
+        AND DATE(event_timestamp) BETWEEN @startDate AND @endDate
+        AND event_type = 'chat_request'
+        AND (
+          @searchQuery IS NULL
+          OR @searchQuery = ''
+          OR LOWER(COALESCE(message_content, '')) LIKE CONCAT('%', LOWER(@searchQuery), '%')
+          OR LOWER(COALESCE(response_content, '')) LIKE CONCAT('%', LOWER(@searchQuery), '%')
+        )
+      ORDER BY event_timestamp DESC
+      LIMIT @limit OFFSET @offset
+    `
+
+    const result = await this.executeQuery(query, {
+      chatId: { value: chatId, type: 'STRING' },
+      startDate: { value: startDate, type: 'DATE' },
+      endDate: { value: endDate, type: 'DATE' },
+      searchQuery: { value: searchQuery || '', type: 'STRING' },
+      limit: { value: limit.toString(), type: 'INT64' },
+      offset: { value: offset.toString(), type: 'INT64' },
+    })
+
+    const messages: ChatMessage[] = (result.rows || []).map((row) => ({
+      eventId: row.f[0].v || '',
+      eventTimestamp: row.f[1].v || '',
+      chatId: row.f[2].v || '',
+      messageContent: row.f[3].v || null,
+      responseContent: row.f[4].v || null,
+      originDomain: row.f[5].v || null,
+      totalDurationMs: row.f[6].v ? parseFloat(row.f[6].v) : null,
+      tokensInput: row.f[7].v ? parseInt(row.f[7].v, 10) : null,
+      tokensOutput: row.f[8].v ? parseInt(row.f[8].v, 10) : null,
+      contextFound: row.f[9].v === 'true',
+      errorCode: row.f[10].v || null,
+    }))
+
+    const nextOffset = offset + limit
+    const hasMore = nextOffset < totalCount
+
+    return {
+      messages,
+      totalCount,
+      hasMore,
+      nextOffset,
+    }
   }
 
   private async executeQuery(

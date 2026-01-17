@@ -1239,6 +1239,55 @@ app.get('/api/analytics/devices', async (c) => {
   }
 })
 
+// GET /api/analytics/messages - Message list with content
+app.get('/api/analytics/messages', async (c) => {
+  const guard = await ensureAuthenticatedUser(c)
+  if (guard) return guard
+  const user = c.get('user') as FirebaseUser
+
+  const chatId = c.req.query('chat_id')
+  const startDate = c.req.query('start_date')
+  const endDate = c.req.query('end_date')
+  const limitParam = c.req.query('limit')
+  const offsetParam = c.req.query('offset')
+  const search = c.req.query('search') || undefined
+
+  if (!chatId || !startDate || !endDate) {
+    return jsonError(c, 400, 'chat_id, start_date, and end_date are required')
+  }
+
+  if (!isValidDateFormat(startDate) || !isValidDateFormat(endDate)) {
+    return jsonError(c, 400, 'Invalid date format. Use YYYY-MM-DD')
+  }
+
+  const limit = Math.min(parseInt(limitParam || '50', 10), 100)
+  const offset = parseInt(offsetParam || '0', 10)
+
+  try {
+    const chat = await fetchChatIfOwned(c, chatId, user.uid)
+    if (!chat) {
+      return jsonError(c, 404, 'chat not found')
+    }
+
+    const analytics = c.get('bqAnalytics') as BigQueryAnalytics
+    if (!analytics || !analytics.isEnabled()) {
+      return c.json({
+        messages: [],
+        totalCount: 0,
+        hasMore: false,
+        nextOffset: offset,
+        message: 'Analytics not enabled'
+      })
+    }
+
+    const result = await analytics.getMessages(chatId, startDate, endDate, limit, offset, search)
+    return c.json(result)
+  } catch (err) {
+    console.error('Analytics messages query failed:', err)
+    return serverError(c)
+  }
+})
+
 // Wrap the app with Sentry for error tracking
 export default Sentry.withSentry(
   (env: Bindings) => ({

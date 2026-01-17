@@ -28,6 +28,7 @@ import {
   fetchDomainBreakdown,
   fetchDeviceBreakdown,
 } from "../../lib/api";
+import { MessagesSection } from "./MessagesSection";
 
 type DateRangePreset = "last7days" | "last30days" | "last90days" | "custom";
 
@@ -88,6 +89,10 @@ export function AnalyticsTab({ activeChat, activeChatId }: AnalyticsTabProps) {
   const [domains, setDomains] = useState<DomainBreakdown[]>([]);
   const [devices, setDevices] = useState<DeviceBreakdown[]>([]);
 
+  // Computed date range for MessagesSection
+  const [computedStartDate, setComputedStartDate] = useState("");
+  const [computedEndDate, setComputedEndDate] = useState("");
+
   const loadData = useCallback(async () => {
     if (!activeChatId) return;
 
@@ -105,6 +110,10 @@ export function AnalyticsTab({ activeChat, activeChatId }: AnalyticsTabProps) {
       startDate = range.start;
       endDate = range.end;
     }
+
+    // Store computed dates for MessagesSection
+    setComputedStartDate(startDate);
+    setComputedEndDate(endDate);
 
     try {
       const [summaryData, overviewData, hourlyData, domainsData, devicesData] = await Promise.all([
@@ -413,6 +422,15 @@ export function AnalyticsTab({ activeChat, activeChatId }: AnalyticsTabProps) {
               )}
             </div>
           </div>
+
+          {/* Messages Section */}
+          {computedStartDate && computedEndDate && (
+            <MessagesSection
+              chatId={activeChatId}
+              startDate={computedStartDate}
+              endDate={computedEndDate}
+            />
+          )}
         </>
       )}
     </div>

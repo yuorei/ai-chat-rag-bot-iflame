@@ -1,5 +1,5 @@
 import { getFirebaseAuth } from './firebase'
-import type { ChatUISettings, ThemeSettings, WidgetSettings, KnowledgeAssetWithContent, Suggestion, AnalyticsSummary, AnalyticsOverview, HourlyDistribution, DomainBreakdown, DeviceBreakdown } from './types';
+import type { ChatUISettings, ThemeSettings, WidgetSettings, KnowledgeAssetWithContent, Suggestion, AnalyticsSummary, AnalyticsOverview, HourlyDistribution, DomainBreakdown, DeviceBreakdown, MessageListResponse } from './types';
 
 const fallbackBase =
   import.meta.env.VITE_MANAGEMENT_API_BASE_URL ?? "http://localhost:8100";
@@ -311,6 +311,27 @@ export async function fetchDeviceBreakdown(
   });
   const data = await apiFetch<{ data: DeviceBreakdown[] }>(`/api/analytics/devices?${params}`);
   return data.data || [];
+}
+
+export async function fetchMessages(
+  chatId: string,
+  startDate: string,
+  endDate: string,
+  limit: number = 50,
+  offset: number = 0,
+  searchQuery?: string
+): Promise<MessageListResponse> {
+  const params = new URLSearchParams({
+    chat_id: chatId,
+    start_date: startDate,
+    end_date: endDate,
+    limit: limit.toString(),
+    offset: offset.toString(),
+  });
+  if (searchQuery) {
+    params.append('search', searchQuery);
+  }
+  return apiFetch<MessageListResponse>(`/api/analytics/messages?${params}`);
 }
 
 declare global {
