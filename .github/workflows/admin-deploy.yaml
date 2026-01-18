@@ -47,8 +47,8 @@ jobs:
         run: |
           docker build \
             --platform linux/amd64 \
-            --build-arg MANAGEMENT_API_BASE_URL=${{ secrets.MANAGEMENT_API_BASE_URL }} \
-            --build-arg MANAGEMENT_API_KEY=${{ secrets.MANAGEMENT_API_KEY }} \
+            --build-arg "MANAGEMENT_API_BASE_URL=${{ secrets.MANAGEMENT_API_BASE_URL }}" \
+            --build-arg "MANAGEMENT_API_KEY=${{ secrets.MANAGEMENT_API_KEY }}" \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
             -t ${{ env.ARTIFACT_REGISTRY }}/${{ env.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.IMAGE_NAME }}:latest \
             ./admin/ai-chat-admin
