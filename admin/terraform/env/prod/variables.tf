@@ -82,3 +82,8 @@ variable "google_client_secret" {
   type        = string
   sensitive   = true
 }
+
+variable "nextauth_url" {
+  description = "Base URL for NextAuth.js callbacks"
+  type        = string
+}

@@ -94,6 +94,7 @@ module "cloud_run" {
     BQ_DATASET_ID           = var.bq_dataset_id
     NODE_ENV                = "production"
     NEXTAUTH_SECRET         = var.nextauth_secret
+    NEXTAUTH_URL            = var.nextauth_url
     GOOGLE_CLIENT_ID        = var.google_client_id
     GOOGLE_CLIENT_SECRET    = var.google_client_secret
     AUTHORIZED_EMAILS       = local.authorized_emails
