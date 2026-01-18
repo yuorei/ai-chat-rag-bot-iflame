@@ -1,5 +1,9 @@
-const MANAGEMENT_API_BASE_URL = process.env.MANAGEMENT_API_BASE_URL || '';
-const MANAGEMENT_API_KEY = process.env.MANAGEMENT_API_KEY || '';
+function getConfig() {
+  return {
+    baseUrl: process.env.MANAGEMENT_API_BASE_URL || '',
+    apiKey: process.env.MANAGEMENT_API_KEY || '',
+  };
+}
 
 export type User = {
   id: string;
@@ -47,17 +51,19 @@ export type Stats = {
 };
 
 async function fetchApi<T>(path: string): Promise<T> {
-  if (!MANAGEMENT_API_BASE_URL) {
+  const { baseUrl, apiKey } = getConfig();
+
+  if (!baseUrl) {
     throw new Error('MANAGEMENT_API_BASE_URL is not configured');
   }
-  if (!MANAGEMENT_API_KEY) {
+  if (!apiKey) {
     throw new Error('MANAGEMENT_API_KEY is not configured');
   }
 
-  const url = `${MANAGEMENT_API_BASE_URL}${path}`;
+  const url = `${baseUrl}${path}`;
   const response = await fetch(url, {
     headers: {
-      'X-Admin-API-Key': MANAGEMENT_API_KEY,
+      'X-Admin-API-Key': apiKey,
       'Content-Type': 'application/json',
     },
     cache: 'no-store',
