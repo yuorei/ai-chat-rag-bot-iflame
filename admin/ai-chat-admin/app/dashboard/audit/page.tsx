@@ -1,5 +1,7 @@
 import { getAuditLogs } from '@/lib/bigquery';
 
+export const dynamic = 'force-dynamic';
+
 export default async function AuditPage() {
   let logs: Awaited<ReturnType<typeof getAuditLogs>> = [];
   let error: string | null = null;

@@ -4,6 +4,8 @@ import {
   getDomainBreakdown,
 } from '@/lib/bigquery';
 
+export const dynamic = 'force-dynamic';
+
 function formatDate(daysAgo: number): string {
   const date = new Date();
   date.setDate(date.getDate() - daysAgo);

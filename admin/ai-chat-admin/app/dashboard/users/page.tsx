@@ -1,5 +1,7 @@
 import { getUsers } from '@/lib/management-api';
 
+export const dynamic = 'force-dynamic';
+
 export default async function UsersPage() {
   let users: Awaited<ReturnType<typeof getUsers>> = [];
   let error: string | null = null;

@@ -1,5 +1,7 @@
 import { getStats } from '@/lib/management-api';
 
+export const dynamic = 'force-dynamic';
+
 async function StatsCard({
   title,
   value,

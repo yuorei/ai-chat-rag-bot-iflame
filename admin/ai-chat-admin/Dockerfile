@@ -17,6 +17,11 @@ COPY . .
 
 # Build the application
 ENV NEXT_TELEMETRY_DISABLED=1
+# Build-time env vars (passed from CI, overridden at runtime by Cloud Run)
+ARG MANAGEMENT_API_BASE_URL
+ARG MANAGEMENT_API_KEY
+ENV MANAGEMENT_API_BASE_URL=${MANAGEMENT_API_BASE_URL}
+ENV MANAGEMENT_API_KEY=${MANAGEMENT_API_KEY}
 RUN npm run build
 
 # Production image, copy all the files and run next
