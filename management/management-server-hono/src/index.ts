@@ -108,6 +108,79 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
+// SQL query result types for type-safe database queries
+type ChatSuggestionRow = {
+  id: string
+  text: string
+  order_index: number
+  enabled: number
+}
+
+type AdminUserRow = {
+  id: string
+  email: string
+  email_verified: number
+  created_at: string
+  updated_at: string
+  chat_count: number
+}
+
+type AdminChatRow = {
+  id: string
+  target: string
+  target_type: string
+  display_name: string
+  system_prompt: string
+  owner_user_id: string
+  owner_email: string | null
+  created_at: string
+  updated_at: string
+  targets: string
+}
+
+type AdminKnowledgeAssetRow = {
+  id: string
+  chat_id: string
+  chat_display_name: string | null
+  owner_email: string | null
+  type: string
+  title: string | null
+  source_url: string | null
+  original_filename: string | null
+  storage_path: string | null
+  status: string
+  embedding_count: number
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+type ChatProfileRow = {
+  id: string
+  target: string
+  target_type: string
+  display_name: string
+  system_prompt: string
+  created_at: string
+  updated_at: string
+  targets: string
+}
+
+type KnowledgeAssetRow = {
+  id: string
+  chat_id: string
+  type: string
+  title: string | null
+  source_url: string | null
+  original_filename: string | null
+  storage_path: string | null
+  status: string
+  embedding_count: number
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -589,9 +662,9 @@ app.get('/api/chats/:id/suggestions', async (c) => {
        FROM chat_suggestions
        WHERE chat_id = ?
        ORDER BY order_index ASC`
-    ).bind(chatId).all<any>()
+    ).bind(chatId).all<ChatSuggestionRow>()
 
-    const suggestions = (result.results || []).map((row: any) => ({
+    const suggestions = (result.results || []).map((row) => ({
       id: row.id as string,
       text: row.text as string,
       order_index: row.order_index as number,
@@ -643,9 +716,9 @@ app.put('/api/chats/:id/suggestions', async (c) => {
        FROM chat_suggestions
        WHERE chat_id = ?
        ORDER BY order_index ASC`
-    ).bind(chatId).all<any>()
+    ).bind(chatId).all<ChatSuggestionRow>()
 
-    const suggestions = (result.results || []).map((row: any) => ({
+    const suggestions = (result.results || []).map((row) => ({
       id: row.id as string,
       text: row.text as string,
       order_index: row.order_index as number,
@@ -1314,9 +1387,9 @@ app.get('/api/admin/users', async (c) => {
        GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
        ORDER BY u.created_at DESC
        LIMIT 1000`
-    ).all<any>()
+    ).all<AdminUserRow>()
 
-    const users = (result.results || []).map((row: any) => ({
+    const users = (result.results || []).map((row) => ({
       id: row.id as string,
       email: row.email as string,
       email_verified: row.email_verified === 1,
@@ -1352,9 +1425,9 @@ app.get('/api/admin/chats', async (c) => {
                 cp.owner_user_id, cp.created_at, cp.updated_at, u.email
        ORDER BY cp.created_at DESC
        LIMIT 1000`
-    ).all<any>()
+    ).all<AdminChatRow>()
 
-    const chats = (result.results || []).map((row: any) => {
+    const chats = (result.results || []).map((row) => {
       const targetsRaw = (row.targets as string) || ''
       const targets = targetsRaw
         .split(',')
@@ -1400,9 +1473,9 @@ app.get('/api/admin/knowledge', async (c) => {
        LEFT JOIN users u ON u.id = cp.owner_user_id
        ORDER BY ka.created_at DESC
        LIMIT 1000`
-    ).all<any>()
+    ).all<AdminKnowledgeAssetRow>()
 
-    const items = (result.results || []).map((row: any) => ({
+    const items = (result.results || []).map((row) => ({
       id: row.id as string,
       chat_id: row.chat_id as string,
       chat_display_name: row.chat_display_name as string | null,
@@ -1629,13 +1702,13 @@ async function fetchChats(c: any, userId: string | null): Promise<ChatProfile[]>
        WHERE cp.owner_user_id = ?
        GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
        ORDER BY cp.created_at ASC`
-    ).bind(userId).all<any>()
+    ).bind(userId).all<ChatProfileRow>()
   } else {
     result = await c.env.DB.prepare(
       `${baseQuery}
        GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
        ORDER BY cp.created_at ASC`
-    ).all<any>()
+    ).all<ChatProfileRow>()
   }
   const rows = result.results || []
   return rows.map(mapChatRow)
@@ -1732,7 +1805,7 @@ async function resolveChatIfOwned(c: any, key: string, userId: string): Promise<
   return null
 }
 
-function mapChatRow(row: any): ChatProfile {
+function mapChatRow(row: ChatProfileRow): ChatProfile {
   const targetsRaw = (row.targets as string) || ''
   const targets = targetsRaw
     .split(',')
@@ -1778,7 +1851,7 @@ async function listKnowledge(c: any, chatId: string, userId: string): Promise<Kn
     stmt = c.env.DB.prepare(`${base} ORDER BY ka.created_at DESC LIMIT 200`).bind(userId)
   }
 
-  const result = await stmt.all<any>()
+  const result = await stmt.all<KnowledgeAssetRow>()
   const rows = result.results || []
   return rows.map((row) => ({
     id: row.id as string,
