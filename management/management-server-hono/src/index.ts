@@ -1391,8 +1391,12 @@ app.get('/api/admin/knowledge', async (c) => {
   const limitParam = c.req.query('limit')
   const offsetParam = c.req.query('offset')
 
-  const limit = Math.min(parseInt(limitParam || '50', 10), 100)
-  const offset = parseInt(offsetParam || '0', 10)
+  const limitNum = parseInt(limitParam || '50', 10)
+  const offsetNum = parseInt(offsetParam || '0', 10)
+  
+  // Validate parsed values
+  const limit = isNaN(limitNum) ? 50 : Math.max(1, Math.min(limitNum, 100))
+  const offset = isNaN(offsetNum) ? 0 : Math.max(0, offsetNum)
 
   try {
     // Get total count
@@ -1433,7 +1437,7 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    const hasMore = offset + items.length < totalCount
+    const hasMore = offset + limit < totalCount
     const nextOffset = hasMore ? offset + limit : offset
 
     return c.json({ 
