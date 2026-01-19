@@ -1395,6 +1395,14 @@ app.get('/api/admin/knowledge', async (c) => {
   const offset = parseInt(offsetParam || '0', 10)
 
   try {
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM knowledge_assets`
+    ).first<{ total: number }>()
+    
+    const totalCount = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
               ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
@@ -1425,12 +1433,12 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    const hasMore = items.length === limit
+    const hasMore = offset + items.length < totalCount
     const nextOffset = hasMore ? offset + limit : offset
 
     return c.json({ 
       items,
-      totalCount: items.length,
+      totalCount,
       hasMore,
       nextOffset
     })
