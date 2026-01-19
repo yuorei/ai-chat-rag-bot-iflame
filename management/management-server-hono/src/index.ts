@@ -1388,6 +1388,12 @@ app.get('/api/admin/knowledge', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
+  const limitParam = c.req.query('limit')
+  const offsetParam = c.req.query('offset')
+
+  const limit = Math.min(parseInt(limitParam || '50', 10), 100)
+  const offset = parseInt(offsetParam || '0', 10)
+
   try {
     const result = await c.env.DB.prepare(
       `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
@@ -1399,8 +1405,8 @@ app.get('/api/admin/knowledge', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
        LEFT JOIN users u ON u.id = cp.owner_user_id
        ORDER BY ka.created_at DESC
-       LIMIT 1000`
-    ).all<any>()
+       LIMIT ?1 OFFSET ?2`
+    ).bind(limit, offset).all<any>()
 
     const items = (result.results || []).map((row: any) => ({
       id: row.id as string,
@@ -1419,7 +1425,15 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    return c.json({ items })
+    const hasMore = items.length === limit
+    const nextOffset = hasMore ? offset + limit : offset
+
+    return c.json({ 
+      items,
+      totalCount: items.length,
+      hasMore,
+      nextOffset
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined
