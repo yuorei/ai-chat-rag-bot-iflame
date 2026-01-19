@@ -3,11 +3,14 @@ import { getUsers } from '@/lib/management-api';
 export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
-  let users: Awaited<ReturnType<typeof getUsers>> = [];
+  let users: Awaited<ReturnType<typeof getUsers>>['users'] = [];
+  let pagination: Awaited<ReturnType<typeof getUsers>>['pagination'] | null = null;
   let error: string | null = null;
 
   try {
-    users = await getUsers();
+    const response = await getUsers();
+    users = response.users;
+    pagination = response.pagination;
   } catch (e) {
     error = e instanceof Error ? e.message : 'Failed to load users';
   }
@@ -91,7 +94,8 @@ export default async function UsersPage() {
           </div>
           <div className="border-t border-zinc-100 px-6 py-3 dark:border-zinc-800">
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              合計: {users.length} 件
+              合計: {pagination?.total ?? users.length} 件
+              {pagination && ` (ページ ${pagination.page} / ${pagination.totalPages})`}
             </p>
           </div>
         </div>

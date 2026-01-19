@@ -3,11 +3,14 @@ import { getChats } from '@/lib/management-api';
 export const dynamic = 'force-dynamic';
 
 export default async function ChatsPage() {
-  let chats: Awaited<ReturnType<typeof getChats>> = [];
+  let chats: Awaited<ReturnType<typeof getChats>>['chats'] = [];
+  let pagination: Awaited<ReturnType<typeof getChats>>['pagination'] | null = null;
   let error: string | null = null;
 
   try {
-    chats = await getChats();
+    const response = await getChats();
+    chats = response.chats;
+    pagination = response.pagination;
   } catch (e) {
     error = e instanceof Error ? e.message : 'Failed to load chats';
   }
@@ -103,7 +106,8 @@ export default async function ChatsPage() {
           </div>
           <div className="border-t border-zinc-100 px-6 py-3 dark:border-zinc-800">
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              合計: {chats.length} 件
+              合計: {pagination?.total ?? chats.length} 件
+              {pagination && ` (ページ ${pagination.page} / ${pagination.totalPages})`}
             </p>
           </div>
         </div>
