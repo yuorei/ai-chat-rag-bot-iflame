@@ -1306,6 +1306,21 @@ app.get('/api/admin/users', async (c) => {
   if (guard) return guard
 
   try {
+    // Parse pagination parameters
+    const limitParam = c.req.query('limit')
+    const offsetParam = c.req.query('offset')
+    
+    // Set defaults and validate
+    const limit = Math.min(Math.max(1, parseInt(limitParam || '100', 10)), 1000)
+    const offset = Math.max(0, parseInt(offsetParam || '0', 10))
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM users`
+    ).first<any>()
+    const total = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
               COUNT(DISTINCT cp.id) as chat_count
@@ -1313,8 +1328,8 @@ app.get('/api/admin/users', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.owner_user_id = u.id
        GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
        ORDER BY u.created_at DESC
-       LIMIT 1000`
-    ).all<any>()
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<any>()
 
     const users = (result.results || []).map((row: any) => ({
       id: row.id as string,
@@ -1325,7 +1340,15 @@ app.get('/api/admin/users', async (c) => {
       chat_count: row.chat_count as number,
     }))
 
-    return c.json({ users })
+    return c.json({ 
+      users,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total
+      }
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined
