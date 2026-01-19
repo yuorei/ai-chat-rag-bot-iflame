@@ -1438,7 +1438,7 @@ app.get('/api/admin/knowledge', async (c) => {
     }))
 
     const nextOffset = offset + limit
-    const hasMore = nextOffset < totalCount
+    const hasMore = items.length === limit && nextOffset < totalCount
 
     return c.json({ 
       items,
