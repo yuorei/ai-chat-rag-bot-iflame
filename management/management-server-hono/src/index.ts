@@ -1291,7 +1291,7 @@ app.get('/api/analytics/messages', async (c) => {
 // --- Admin Endpoints (API Key authentication only) ---
 
 // Helper to check admin API key only
-async function ensureAdminApiKey(c: any): Promise<Response | null> {
+async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Variables }>): Promise<Response | null> {
   const cfg = getConfig(c)
   const provided = c.req.header('X-Admin-API-Key') || ''
   if (!cfg.adminAPIKey || provided !== cfg.adminAPIKey) {
