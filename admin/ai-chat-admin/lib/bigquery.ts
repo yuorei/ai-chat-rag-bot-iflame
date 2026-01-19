@@ -7,7 +7,7 @@ let bigQueryClient: BigQuery | null = null;
 
 function getBigQueryClient(): BigQuery {
   if (!bigQueryClient) {
-    if (!GCP_PROJECT_ID || GCP_PROJECT_ID.trim() === '') {
+    if (GCP_PROJECT_ID.trim() === '') {
       throw new Error(
         'GCP_PROJECT_ID environment variable is not set or is empty. ' +
         'Please set GCP_PROJECT_ID to a valid Google Cloud Platform project ID.'
