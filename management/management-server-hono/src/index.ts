@@ -1311,8 +1311,18 @@ app.get('/api/admin/users', async (c) => {
     const offsetParam = c.req.query('offset')
     
     // Set defaults and validate
-    const limit = Math.min(Math.max(1, parseInt(limitParam || '100', 10)), 1000)
-    const offset = Math.max(0, parseInt(offsetParam || '0', 10))
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
+    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : 0
+    
+    if (limitParam && isNaN(parsedLimit)) {
+      return jsonError(c, 400, 'Invalid limit parameter')
+    }
+    if (offsetParam && isNaN(parsedOffset)) {
+      return jsonError(c, 400, 'Invalid offset parameter')
+    }
+    
+    const limit = Math.min(Math.max(1, parsedLimit), 1000)
+    const offset = Math.max(0, parsedOffset)
 
     // Get total count
     const countResult = await c.env.DB.prepare(
