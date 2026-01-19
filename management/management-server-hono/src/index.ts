@@ -1437,8 +1437,8 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    const hasMore = offset + limit < totalCount
-    const nextOffset = hasMore ? offset + limit : offset
+    const nextOffset = offset + limit
+    const hasMore = nextOffset < totalCount
 
     return c.json({ 
       items,
