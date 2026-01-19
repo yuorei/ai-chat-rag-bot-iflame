@@ -181,6 +181,20 @@ type KnowledgeAssetRow = {
   updated_at: string
 }
 
+type KnowledgeAssetWithOwnerRow = KnowledgeAssetRow & {
+  owner_user_id: string
+  qdrant_point_id?: string | null
+}
+
+type ChatUISettingsRow = {
+  id: string
+  chat_id: string
+  theme_settings: string
+  widget_settings: string
+  created_at: string
+  updated_at: string
+}
+
 // ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
@@ -942,7 +956,7 @@ app.get('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -1021,7 +1035,7 @@ app.put('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -1079,7 +1093,7 @@ app.delete('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -1724,7 +1738,7 @@ async function fetchChat(c: any, id: string): Promise<ChatProfile | null> {
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(id)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1740,7 +1754,7 @@ async function fetchChatIfOwned(c: any, id: string, userId: string): Promise<Cha
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(id, userId)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1755,7 +1769,7 @@ async function fetchChatByTarget(c: any, target: string): Promise<ChatProfile | 
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(target)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1771,7 +1785,7 @@ async function fetchChatByTargetIfOwned(c: any, target: string, userId: string):
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(target, userId)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -2071,7 +2085,7 @@ async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings |
      WHERE chat_id = ?`
   )
     .bind(chatId)
-    .first<any>()
+    .first<ChatUISettingsRow>()
 
   if (!row) return null
 
