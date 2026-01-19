@@ -65,10 +65,6 @@ export type PaginatedResponse<T> = {
 async function fetchApi<T>(path: string, params?: Record<string, string>): Promise<T> {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
-  console.log('[management-api] ベースURL:', baseUrl);
-  console.log('[management-api] fetchApi called for path:', path);
-  console.log('[management-api] MANAGEMENT_API_BASE_URL:', baseUrl ? `${baseUrl.substring(0, 20)}...` : 'NOT SET');
-  console.log('[management-api] MANAGEMENT_API_KEY:', apiKey ? 'SET (hidden)' : 'NOT SET');
 
   if (!baseUrl) {
     throw new Error('MANAGEMENT_API_BASE_URL is not configured');

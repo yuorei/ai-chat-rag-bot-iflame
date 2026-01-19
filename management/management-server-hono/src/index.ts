@@ -1300,16 +1300,31 @@ async function ensureAdminApiKey(c: any): Promise<Response | null> {
   return null
 }
 
+// Helper to parse pagination parameters
+function parsePaginationParams(c: any): { page: number; limit: number; offset: number } {
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
+  const offset = (page - 1) * limit
+  return { page, limit, offset }
+}
+
+// Helper to build pagination response
+function buildPaginationResponse(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+
 // GET /api/admin/users - List all users (admin only)
 app.get('/api/admin/users', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
   try {
-    // Parse pagination parameters
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
-    const offset = (page - 1) * limit
+    const { page, limit, offset } = parsePaginationParams(c)
 
     // Get total count
     const countResult = await c.env.DB.prepare(
@@ -1338,12 +1353,7 @@ app.get('/api/admin/users', async (c) => {
 
     return c.json({
       users,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: buildPaginationResponse(page, limit, total),
     })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
@@ -1359,10 +1369,7 @@ app.get('/api/admin/chats', async (c) => {
   if (guard) return guard
 
   try {
-    // Parse pagination parameters
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
-    const offset = (page - 1) * limit
+    const { page, limit, offset } = parsePaginationParams(c)
 
     // Get total count
     const countResult = await c.env.DB.prepare(
@@ -1407,12 +1414,7 @@ app.get('/api/admin/chats', async (c) => {
 
     return c.json({
       chats,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: buildPaginationResponse(page, limit, total),
     })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
@@ -1428,10 +1430,7 @@ app.get('/api/admin/knowledge', async (c) => {
   if (guard) return guard
 
   try {
-    // Parse pagination parameters
-    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
-    const offset = (page - 1) * limit
+    const { page, limit, offset } = parsePaginationParams(c)
 
     // Get total count
     const countResult = await c.env.DB.prepare(
@@ -1471,12 +1470,7 @@ app.get('/api/admin/knowledge', async (c) => {
 
     return c.json({
       items,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      pagination: buildPaginationResponse(page, limit, total),
     })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
