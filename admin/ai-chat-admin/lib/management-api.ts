@@ -15,6 +15,18 @@ export type User = {
   chat_count: number;
 };
 
+export type PaginationInfo = {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+export type PaginatedUsersResponse = {
+  users: User[];
+  pagination: PaginationInfo;
+};
+
 export type Chat = {
   id: string;
   target: string;
