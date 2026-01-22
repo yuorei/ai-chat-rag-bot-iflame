@@ -197,7 +197,28 @@ type ChatUISettingsRow = {
 
 // ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Compare against same-length dummy to avoid timing leak on length difference
+    const dummy = 'x'.repeat(a.length)
+    let result = 0
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ dummy.charCodeAt(i)
+    }
+    return false
+  }
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+// Flag to track if users table is unavailable (to avoid repeated failed upserts)
+let usersTableUnavailable = false
 
 // Initialize BigQuery logger
 let bqLoggerInstance: BigQueryLogger | null = null
@@ -1381,7 +1402,7 @@ app.get('/api/analytics/messages', async (c) => {
 async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Variables }>): Promise<Response | null> {
   const cfg = getConfig(c)
   const provided = c.req.header('X-Admin-API-Key') || ''
-  if (!cfg.adminAPIKey || provided !== cfg.adminAPIKey) {
+  if (!cfg.adminAPIKey || !timingSafeEqual(provided, cfg.adminAPIKey)) {
     return jsonError(c, 401, 'admin api key required')
   }
   return null
@@ -1389,8 +1410,10 @@ async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Var
 
 // Helper to parse pagination parameters
 function parsePaginationParams(c: any): { page: number; limit: number; offset: number } {
-  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
-  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
+  const rawPage = parseInt(c.req.query('page') || '1', 10)
+  const rawLimit = parseInt(c.req.query('limit') || '50', 10)
+  const page = Number.isFinite(rawPage) ? Math.max(1, rawPage) : 1
+  const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50
   const offset = (page - 1) * limit
   return { page, limit, offset }
 }
@@ -1703,19 +1726,24 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
   if (verificationError) return verificationError
   c.set('user', user)
 
-  // usersテーブルに自動登録/更新
-  try {
-    await c.env.DB.prepare(
-      `INSERT INTO users (id, email, email_verified, created_at, updated_at)
-       VALUES (?, ?, ?, datetime('now'), datetime('now'))
-       ON CONFLICT(id) DO UPDATE SET
-         email = excluded.email,
-         email_verified = excluded.email_verified,
-         updated_at = datetime('now')`
-    ).bind(user.uid, user.email || '', user.email_verified ? 1 : 0).run()
-  } catch (err) {
-    // usersテーブルが存在しない場合などは無視（後方互換性）
-    console.error('Failed to upsert user:', err)
+  // usersテーブルに自動登録/更新（テーブル不在検知後はスキップ）
+  if (!usersTableUnavailable) {
+    try {
+      await c.env.DB.prepare(
+        `INSERT INTO users (id, email, email_verified, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           email = excluded.email,
+           email_verified = excluded.email_verified,
+           updated_at = datetime('now')
+         WHERE email != excluded.email OR email_verified != excluded.email_verified`
+      ).bind(user.uid, user.email || '', user.email_verified ? 1 : 0).run()
+    } catch (err) {
+      // usersテーブルが存在しない場合などは無視（後方互換性）
+      // 一度エラーが発生したら以降のリクエストではスキップ
+      usersTableUnavailable = true
+      console.warn('Users table upsert skipped (table may not exist):', err)
+    }
   }
 
   return null
