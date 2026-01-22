@@ -1739,10 +1739,17 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
          WHERE email != excluded.email OR email_verified != excluded.email_verified`
       ).bind(user.uid, user.email || '', user.email_verified ? 1 : 0).run()
     } catch (err) {
-      // usersテーブルが存在しない場合などは無視（後方互換性）
-      // 一度エラーが発生したら以降のリクエストではスキップ
-      usersTableUnavailable = true
-      console.warn('Users table upsert skipped (table may not exist):', err)
+      // テーブル不存在エラーのみフラグを立てる（後方互換性）
+      const errMsg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+      // SQLiteの典型的なテーブル不存在エラーを検出
+      const tableNotExistPattern = /no such table|table .* does not exist|table .* doesn't exist/
+      if (tableNotExistPattern.test(errMsg)) {
+        usersTableUnavailable = true
+        console.warn('Users table does not exist, disabling auto-sync:', err)
+      } else {
+        // その他のエラー（一時的なDB障害、ロック等）はログのみでリトライ継続
+        console.error('Failed to upsert user (will retry on next request):', err)
+      }
     }
   }
 
