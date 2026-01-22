@@ -1388,7 +1388,25 @@ app.get('/api/admin/knowledge', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
+  const limitParam = c.req.query('limit')
+  const offsetParam = c.req.query('offset')
+
+  const limitNum = parseInt(limitParam || '50', 10)
+  const offsetNum = parseInt(offsetParam || '0', 10)
+  
+  // Validate parsed values
+  const limit = isNaN(limitNum) ? 50 : Math.max(1, Math.min(limitNum, 100))
+  const offset = isNaN(offsetNum) ? 0 : Math.max(0, offsetNum)
+
   try {
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM knowledge_assets`
+    ).first<{ total: number }>()
+    
+    const totalCount = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
               ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
@@ -1399,8 +1417,8 @@ app.get('/api/admin/knowledge', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
        LEFT JOIN users u ON u.id = cp.owner_user_id
        ORDER BY ka.created_at DESC
-       LIMIT 1000`
-    ).all<any>()
+       LIMIT ?1 OFFSET ?2`
+    ).bind(limit, offset).all<any>()
 
     const items = (result.results || []).map((row: any) => ({
       id: row.id as string,
@@ -1419,7 +1437,15 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    return c.json({ items })
+    const nextOffset = offset + limit
+    const hasMore = items.length === limit && nextOffset < totalCount
+
+    return c.json({ 
+      items,
+      totalCount,
+      hasMore,
+      nextOffset
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined

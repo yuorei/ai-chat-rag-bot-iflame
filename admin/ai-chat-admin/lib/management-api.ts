@@ -90,7 +90,7 @@ export async function getChats(): Promise<Chat[]> {
 }
 
 export async function getKnowledge(): Promise<KnowledgeAsset[]> {
-  const data = await fetchApi<{ items: KnowledgeAsset[] }>('/api/admin/knowledge');
+  const data = await fetchApi<{ items: KnowledgeAsset[]; totalCount: number; hasMore: boolean; nextOffset: number }>('/api/admin/knowledge');
   return data.items;
 }
 
