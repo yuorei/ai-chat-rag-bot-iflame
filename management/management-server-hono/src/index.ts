@@ -108,9 +108,117 @@ type KnowledgeAsset = {
   updated_at: string
 }
 
+// SQL query result types for type-safe database queries
+type ChatSuggestionRow = {
+  id: string
+  text: string
+  order_index: number
+  enabled: number
+}
+
+type AdminUserRow = {
+  id: string
+  email: string
+  email_verified: number
+  created_at: string
+  updated_at: string
+  chat_count: number
+}
+
+type AdminChatRow = {
+  id: string
+  target: string
+  target_type: string
+  display_name: string
+  system_prompt: string
+  owner_user_id: string
+  owner_email: string | null
+  created_at: string
+  updated_at: string
+  targets: string
+}
+
+type AdminKnowledgeAssetRow = {
+  id: string
+  chat_id: string
+  chat_display_name: string | null
+  owner_email: string | null
+  type: string
+  title: string | null
+  source_url: string | null
+  original_filename: string | null
+  storage_path: string | null
+  status: string
+  embedding_count: number
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+type ChatProfileRow = {
+  id: string
+  target: string
+  target_type: string
+  display_name: string
+  system_prompt: string
+  created_at: string
+  updated_at: string
+  targets: string
+}
+
+type KnowledgeAssetRow = {
+  id: string
+  chat_id: string
+  type: string
+  title: string | null
+  source_url: string | null
+  original_filename: string | null
+  storage_path: string | null
+  status: string
+  embedding_count: number
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+type KnowledgeAssetWithOwnerRow = KnowledgeAssetRow & {
+  owner_user_id: string
+  qdrant_point_id?: string | null
+}
+
+type ChatUISettingsRow = {
+  id: string
+  chat_id: string
+  theme_settings: string
+  widget_settings: string
+  created_at: string
+  updated_at: string
+}
+
 // ChatUISettings, ThemeSettings, WidgetSettings are imported from shared/constants/ui-defaults
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Compare against same-length dummy to avoid timing leak on length difference
+    const dummy = 'x'.repeat(a.length)
+    let result = 0
+    for (let i = 0; i < a.length; i++) {
+      result |= a.charCodeAt(i) ^ dummy.charCodeAt(i)
+    }
+    return false
+  }
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
+}
+
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>()
+
+// Flag to track if users table is unavailable (to avoid repeated failed upserts)
+let usersTableUnavailable = false
 
 // Initialize BigQuery logger
 let bqLoggerInstance: BigQueryLogger | null = null
@@ -589,9 +697,9 @@ app.get('/api/chats/:id/suggestions', async (c) => {
        FROM chat_suggestions
        WHERE chat_id = ?
        ORDER BY order_index ASC`
-    ).bind(chatId).all<any>()
+    ).bind(chatId).all<ChatSuggestionRow>()
 
-    const suggestions = (result.results || []).map((row: any) => ({
+    const suggestions = (result.results || []).map((row) => ({
       id: row.id as string,
       text: row.text as string,
       order_index: row.order_index as number,
@@ -643,9 +751,9 @@ app.put('/api/chats/:id/suggestions', async (c) => {
        FROM chat_suggestions
        WHERE chat_id = ?
        ORDER BY order_index ASC`
-    ).bind(chatId).all<any>()
+    ).bind(chatId).all<ChatSuggestionRow>()
 
-    const suggestions = (result.results || []).map((row: any) => ({
+    const suggestions = (result.results || []).map((row) => ({
       id: row.id as string,
       text: row.text as string,
       order_index: row.order_index as number,
@@ -869,7 +977,7 @@ app.get('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -948,7 +1056,7 @@ app.put('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -1006,7 +1114,7 @@ app.delete('/api/knowledge/:id', async (c) => {
        FROM knowledge_assets ka
        JOIN chat_profiles cp ON cp.id = ka.chat_id
        WHERE ka.id = ? AND cp.owner_user_id = ?`
-    ).bind(id, user.uid).first<any>()
+    ).bind(id, user.uid).first<KnowledgeAssetWithOwnerRow>()
 
     if (!row) {
       return jsonError(c, 404, 'knowledge not found')
@@ -1288,6 +1396,225 @@ app.get('/api/analytics/messages', async (c) => {
   }
 })
 
+// --- Admin Endpoints (API Key authentication only) ---
+
+// Helper to check admin API key only
+async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Variables }>): Promise<Response | null> {
+  const cfg = getConfig(c)
+  const provided = c.req.header('X-Admin-API-Key') || ''
+  if (!cfg.adminAPIKey || !timingSafeEqual(provided, cfg.adminAPIKey)) {
+    return jsonError(c, 401, 'admin api key required')
+  }
+  return null
+}
+
+// Helper to parse pagination parameters
+function parsePaginationParams(c: any): { page: number; limit: number; offset: number } {
+  const rawPage = parseInt(c.req.query('page') || '1', 10)
+  const rawLimit = parseInt(c.req.query('limit') || '50', 10)
+  const page = Number.isFinite(rawPage) ? Math.max(1, rawPage) : 1
+  const limit = Number.isFinite(rawLimit) ? Math.min(100, Math.max(1, rawLimit)) : 50
+  const offset = (page - 1) * limit
+  return { page, limit, offset }
+}
+
+// Helper to build pagination response
+function buildPaginationResponse(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+
+// GET /api/admin/users - List all users (admin only)
+app.get('/api/admin/users', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const { page, limit, offset } = parsePaginationParams(c)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM users`
+    ).first<{ total: number }>()
+    const total = countResult?.total || 0
+
+    const result = await c.env.DB.prepare(
+      `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
+              COUNT(DISTINCT cp.id) as chat_count
+       FROM users u
+       LEFT JOIN chat_profiles cp ON cp.owner_user_id = u.id
+       GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
+       ORDER BY u.created_at DESC
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<AdminUserRow>()
+
+    const users = (result.results || []).map((row) => ({
+      id: row.id as string,
+      email: row.email as string,
+      email_verified: row.email_verified === 1,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+      chat_count: row.chat_count as number,
+    }))
+
+    return c.json({
+      users,
+      pagination: buildPaginationResponse(page, limit, total),
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin users query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin users error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/chats - List all chats (admin only, no ownership filter)
+app.get('/api/admin/chats', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const { page, limit, offset } = parsePaginationParams(c)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(DISTINCT cp.id) as total
+       FROM chat_profiles cp`
+    ).first<{ total: number }>()
+    const total = countResult?.total || 0
+
+    const result = await c.env.DB.prepare(
+      `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
+              cp.owner_user_id, cp.created_at, cp.updated_at,
+              u.email as owner_email,
+              GROUP_CONCAT(DISTINCT ct.target) AS targets
+       FROM chat_profiles cp
+       LEFT JOIN chat_targets ct ON ct.chat_id = cp.id
+       LEFT JOIN users u ON u.id = cp.owner_user_id
+       GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
+                cp.owner_user_id, cp.created_at, cp.updated_at, u.email
+       ORDER BY cp.created_at DESC
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<AdminChatRow>()
+
+    const chats = (result.results || []).map((row) => {
+      const targetsRaw = (row.targets as string) || ''
+      const targets = targetsRaw
+        .split(',')
+        .map((v: string) => v.trim())
+        .filter(Boolean)
+      return {
+        id: row.id as string,
+        target: row.target as string,
+        target_type: row.target_type as string,
+        display_name: row.display_name as string,
+        system_prompt: row.system_prompt as string,
+        owner_user_id: row.owner_user_id as string,
+        owner_email: row.owner_email as string | null,
+        targets,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+      }
+    })
+
+    return c.json({
+      chats,
+      pagination: buildPaginationResponse(page, limit, total),
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin chats query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin chats error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/knowledge - List all knowledge assets (admin only)
+app.get('/api/admin/knowledge', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const { page, limit, offset } = parsePaginationParams(c)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM knowledge_assets`
+    ).first<{ total: number }>()
+    const total = countResult?.total || 0
+
+    const result = await c.env.DB.prepare(
+      `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
+              ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
+              ka.created_at, ka.updated_at,
+              cp.display_name as chat_display_name,
+              u.email as owner_email
+       FROM knowledge_assets ka
+       LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
+       LEFT JOIN users u ON u.id = cp.owner_user_id
+       ORDER BY ka.created_at DESC
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<AdminKnowledgeAssetRow>()
+
+    const items = (result.results || []).map((row) => ({
+      id: row.id as string,
+      chat_id: row.chat_id as string,
+      chat_display_name: row.chat_display_name as string | null,
+      owner_email: row.owner_email as string | null,
+      type: row.type as string,
+      title: row.title || undefined,
+      source_url: row.source_url || undefined,
+      original_filename: row.original_filename || undefined,
+      storage_path: row.storage_path || undefined,
+      status: row.status as string,
+      embedding_count: Number(row.embedding_count ?? 0),
+      error_message: row.error_message || undefined,
+      created_at: row.created_at as string,
+      updated_at: row.updated_at as string,
+    }))
+
+    return c.json({
+      items,
+      pagination: buildPaginationResponse(page, limit, total),
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin knowledge query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin knowledge error: ${errorMessage}`)
+  }
+})
+
+// GET /api/admin/stats - Get overall statistics (admin only)
+app.get('/api/admin/stats', async (c) => {
+  const guard = await ensureAdminApiKey(c)
+  if (guard) return guard
+
+  try {
+    const [usersResult, chatsResult, knowledgeResult] = await Promise.all([
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM users').first<{ count: number }>(),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM chat_profiles').first<{ count: number }>(),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM knowledge_assets').first<{ count: number }>(),
+    ])
+
+    return c.json({
+      users_count: usersResult?.count ?? 0,
+      chats_count: chatsResult?.count ?? 0,
+      knowledge_count: knowledgeResult?.count ?? 0,
+    })
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err)
+    const errorStack = err instanceof Error ? err.stack : undefined
+    console.error('Admin stats query failed:', errorMessage, errorStack)
+    return jsonError(c, 500, `Admin stats error: ${errorMessage}`)
+  }
+})
+
 // Wrap the app with Sentry for error tracking
 export default Sentry.withSentry(
   (env: Bindings) => ({
@@ -1398,6 +1725,34 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
   const verificationError = validateEmailVerified(user, c)
   if (verificationError) return verificationError
   c.set('user', user)
+
+  // usersテーブルに自動登録/更新（テーブル不在検知後はスキップ）
+  if (!usersTableUnavailable) {
+    try {
+      await c.env.DB.prepare(
+        `INSERT INTO users (id, email, email_verified, created_at, updated_at)
+         VALUES (?, ?, ?, datetime('now'), datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           email = excluded.email,
+           email_verified = excluded.email_verified,
+           updated_at = datetime('now')
+         WHERE email != excluded.email OR email_verified != excluded.email_verified`
+      ).bind(user.uid, user.email || '', user.email_verified ? 1 : 0).run()
+    } catch (err) {
+      // テーブル不存在エラーのみフラグを立てる（後方互換性）
+      const errMsg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+      // SQLiteの典型的なテーブル不存在エラーを検出
+      const tableNotExistPattern = /no such table|table .* does not exist|table .* doesn't exist/
+      if (tableNotExistPattern.test(errMsg)) {
+        usersTableUnavailable = true
+        console.warn('Users table does not exist, disabling auto-sync:', err)
+      } else {
+        // その他のエラー（一時的なDB障害、ロック等）はログのみでリトライ継続
+        console.error('Failed to upsert user (will retry on next request):', err)
+      }
+    }
+  }
+
   return null
 }
 
@@ -1448,13 +1803,13 @@ async function fetchChats(c: any, userId: string | null): Promise<ChatProfile[]>
        WHERE cp.owner_user_id = ?
        GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
        ORDER BY cp.created_at ASC`
-    ).bind(userId).all<any>()
+    ).bind(userId).all<ChatProfileRow>()
   } else {
     result = await c.env.DB.prepare(
       `${baseQuery}
        GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at
        ORDER BY cp.created_at ASC`
-    ).all<any>()
+    ).all<ChatProfileRow>()
   }
   const rows = result.results || []
   return rows.map(mapChatRow)
@@ -1470,7 +1825,7 @@ async function fetchChat(c: any, id: string): Promise<ChatProfile | null> {
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(id)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1486,7 +1841,7 @@ async function fetchChatIfOwned(c: any, id: string, userId: string): Promise<Cha
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(id, userId)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1501,7 +1856,7 @@ async function fetchChatByTarget(c: any, target: string): Promise<ChatProfile | 
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(target)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1517,7 +1872,7 @@ async function fetchChatByTargetIfOwned(c: any, target: string, userId: string):
      GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt, cp.created_at, cp.updated_at`
   )
     .bind(target, userId)
-    .first<any>()
+    .first<ChatProfileRow>()
   if (!row) return null
   return mapChatRow(row)
 }
@@ -1551,7 +1906,7 @@ async function resolveChatIfOwned(c: any, key: string, userId: string): Promise<
   return null
 }
 
-function mapChatRow(row: any): ChatProfile {
+function mapChatRow(row: ChatProfileRow): ChatProfile {
   const targetsRaw = (row.targets as string) || ''
   const targets = targetsRaw
     .split(',')
@@ -1597,7 +1952,7 @@ async function listKnowledge(c: any, chatId: string, userId: string): Promise<Kn
     stmt = c.env.DB.prepare(`${base} ORDER BY ka.created_at DESC LIMIT 200`).bind(userId)
   }
 
-  const result = await stmt.all<any>()
+  const result = await stmt.all<KnowledgeAssetRow>()
   const rows = result.results || []
   return rows.map((row) => ({
     id: row.id as string,
@@ -1817,7 +2172,7 @@ async function fetchUISettings(c: any, chatId: string): Promise<ChatUISettings |
      WHERE chat_id = ?`
   )
     .bind(chatId)
-    .first<any>()
+    .first<ChatUISettingsRow>()
 
   if (!row) return null
 
