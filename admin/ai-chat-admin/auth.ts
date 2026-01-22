@@ -16,7 +16,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async signIn({ user }) {
       if (!user.email) return false;
-      if (authorizedEmails.length === 0) return true;
+      if (authorizedEmails.length === 0) return false;
       return authorizedEmails.includes(user.email);
     },
     async session({ session }) {
