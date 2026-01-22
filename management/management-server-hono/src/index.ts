@@ -1387,37 +1387,38 @@ async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Var
   return null
 }
 
+// Helper to parse pagination parameters
+function parsePaginationParams(c: any): { page: number; limit: number; offset: number } {
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10))
+  const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10)))
+  const offset = (page - 1) * limit
+  return { page, limit, offset }
+}
+
+// Helper to build pagination response
+function buildPaginationResponse(page: number, limit: number, total: number) {
+  return {
+    page,
+    limit,
+    total,
+    totalPages: Math.ceil(total / limit),
+  }
+}
+
 // GET /api/admin/users - List all users (admin only)
 app.get('/api/admin/users', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
   try {
-    // Parse pagination parameters
-    const limitParam = c.req.query('limit')
-    const offsetParam = c.req.query('offset')
-    
-    // Set defaults and validate
-    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
-    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : 0
-    
-    if (limitParam && isNaN(parsedLimit)) {
-      return jsonError(c, 400, 'Invalid limit parameter')
-    }
-    if (offsetParam && isNaN(parsedOffset)) {
-      return jsonError(c, 400, 'Invalid offset parameter')
-    }
-    
-    const limit = Math.min(Math.max(1, parsedLimit), 1000)
-    const offset = Math.max(0, parsedOffset)
+    const { page, limit, offset } = parsePaginationParams(c)
 
     // Get total count
     const countResult = await c.env.DB.prepare(
       `SELECT COUNT(*) as total FROM users`
-    ).first<any>()
+    ).first<{ total: number }>()
     const total = countResult?.total || 0
 
-    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
               COUNT(DISTINCT cp.id) as chat_count
@@ -1437,14 +1438,9 @@ app.get('/api/admin/users', async (c) => {
       chat_count: row.chat_count as number,
     }))
 
-    return c.json({ 
+    return c.json({
       users,
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + limit < total
-      }
+      pagination: buildPaginationResponse(page, limit, total),
     })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
@@ -1460,6 +1456,15 @@ app.get('/api/admin/chats', async (c) => {
   if (guard) return guard
 
   try {
+    const { page, limit, offset } = parsePaginationParams(c)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(DISTINCT cp.id) as total
+       FROM chat_profiles cp`
+    ).first<{ total: number }>()
+    const total = countResult?.total || 0
+
     const result = await c.env.DB.prepare(
       `SELECT cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
               cp.owner_user_id, cp.created_at, cp.updated_at,
@@ -1471,8 +1476,8 @@ app.get('/api/admin/chats', async (c) => {
        GROUP BY cp.id, cp.target, cp.target_type, cp.display_name, cp.system_prompt,
                 cp.owner_user_id, cp.created_at, cp.updated_at, u.email
        ORDER BY cp.created_at DESC
-       LIMIT 1000`
-    ).all<AdminChatRow>()
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<AdminChatRow>()
 
     const chats = (result.results || []).map((row) => {
       const targetsRaw = (row.targets as string) || ''
@@ -1494,7 +1499,10 @@ app.get('/api/admin/chats', async (c) => {
       }
     })
 
-    return c.json({ chats })
+    return c.json({
+      chats,
+      pagination: buildPaginationResponse(page, limit, total),
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined
@@ -1508,25 +1516,15 @@ app.get('/api/admin/knowledge', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
-  const limitParam = c.req.query('limit')
-  const offsetParam = c.req.query('offset')
-
-  const limitNum = parseInt(limitParam || '50', 10)
-  const offsetNum = parseInt(offsetParam || '0', 10)
-  
-  // Validate parsed values
-  const limit = isNaN(limitNum) ? 50 : Math.max(1, Math.min(limitNum, 100))
-  const offset = isNaN(offsetNum) ? 0 : Math.max(0, offsetNum)
-
   try {
+    const { page, limit, offset } = parsePaginationParams(c)
+
     // Get total count
     const countResult = await c.env.DB.prepare(
       `SELECT COUNT(*) as total FROM knowledge_assets`
     ).first<{ total: number }>()
-    
-    const totalCount = countResult?.total || 0
+    const total = countResult?.total || 0
 
-    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
               ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
@@ -1537,7 +1535,7 @@ app.get('/api/admin/knowledge', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
        LEFT JOIN users u ON u.id = cp.owner_user_id
        ORDER BY ka.created_at DESC
-       LIMIT ?1 OFFSET ?2`
+       LIMIT ? OFFSET ?`
     ).bind(limit, offset).all<AdminKnowledgeAssetRow>()
 
     const items = (result.results || []).map((row) => ({
@@ -1557,14 +1555,9 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    const nextOffset = offset + limit
-    const hasMore = items.length === limit && nextOffset < totalCount
-
-    return c.json({ 
+    return c.json({
       items,
-      totalCount,
-      hasMore,
-      nextOffset
+      pagination: buildPaginationResponse(page, limit, total),
     })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)

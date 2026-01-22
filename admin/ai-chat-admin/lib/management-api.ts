@@ -63,7 +63,18 @@ export type Stats = {
   knowledge_count: number;
 };
 
-async function fetchApi<T>(path: string): Promise<T> {
+export type Pagination = {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type PaginatedResponse<T> = {
+  pagination: Pagination;
+} & T;
+
+async function fetchApi<T>(path: string, params?: Record<string, string>): Promise<T> {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
 
@@ -74,7 +85,12 @@ async function fetchApi<T>(path: string): Promise<T> {
     throw new Error('MANAGEMENT_API_KEY is not configured');
   }
 
-  const url = `${baseUrl}${path}`;
+  let url = `${baseUrl}${path}`;
+  if (params) {
+    const queryString = new URLSearchParams(params).toString();
+    url = `${url}?${queryString}`;
+  }
+
   const response = await fetch(url, {
     headers: {
       'X-Admin-API-Key': apiKey,
@@ -91,23 +107,25 @@ async function fetchApi<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getUsers(limit?: number, offset?: number): Promise<PaginatedUsersResponse> {
-  const params = new URLSearchParams();
-  if (limit !== undefined) params.set('limit', limit.toString());
-  if (offset !== undefined) params.set('offset', offset.toString());
-  
-  const url = `/api/admin/users${params.toString() ? `?${params.toString()}` : ''}`;
-  return await fetchApi<PaginatedUsersResponse>(url);
+export async function getUsers(page = 1, limit = 50): Promise<PaginatedResponse<{ users: User[] }>> {
+  return fetchApi<PaginatedResponse<{ users: User[] }>>(
+    '/api/admin/users',
+    { page: String(page), limit: String(limit) }
+  );
 }
 
-export async function getChats(): Promise<Chat[]> {
-  const data = await fetchApi<{ chats: Chat[] }>('/api/admin/chats');
-  return data.chats;
+export async function getChats(page = 1, limit = 50): Promise<PaginatedResponse<{ chats: Chat[] }>> {
+  return fetchApi<PaginatedResponse<{ chats: Chat[] }>>(
+    '/api/admin/chats',
+    { page: String(page), limit: String(limit) }
+  );
 }
 
-export async function getKnowledge(): Promise<KnowledgeAsset[]> {
-  const data = await fetchApi<{ items: KnowledgeAsset[]; totalCount: number; hasMore: boolean; nextOffset: number }>('/api/admin/knowledge');
-  return data.items;
+export async function getKnowledge(page = 1, limit = 50): Promise<PaginatedResponse<{ items: KnowledgeAsset[] }>> {
+  return fetchApi<PaginatedResponse<{ items: KnowledgeAsset[] }>>(
+    '/api/admin/knowledge',
+    { page: String(page), limit: String(limit) }
+  );
 }
 
 export async function getStats(): Promise<Stats> {
