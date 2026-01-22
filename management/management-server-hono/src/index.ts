@@ -1378,7 +1378,7 @@ app.get('/api/analytics/messages', async (c) => {
 // --- Admin Endpoints (API Key authentication only) ---
 
 // Helper to check admin API key only
-async function ensureAdminApiKey(c: any): Promise<Response | null> {
+async function ensureAdminApiKey(c: Context<{ Bindings: Bindings; Variables: Variables }>): Promise<Response | null> {
   const cfg = getConfig(c)
   const provided = c.req.header('X-Admin-API-Key') || ''
   if (!cfg.adminAPIKey || provided !== cfg.adminAPIKey) {
@@ -1393,6 +1393,31 @@ app.get('/api/admin/users', async (c) => {
   if (guard) return guard
 
   try {
+    // Parse pagination parameters
+    const limitParam = c.req.query('limit')
+    const offsetParam = c.req.query('offset')
+    
+    // Set defaults and validate
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
+    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : 0
+    
+    if (limitParam && isNaN(parsedLimit)) {
+      return jsonError(c, 400, 'Invalid limit parameter')
+    }
+    if (offsetParam && isNaN(parsedOffset)) {
+      return jsonError(c, 400, 'Invalid offset parameter')
+    }
+    
+    const limit = Math.min(Math.max(1, parsedLimit), 1000)
+    const offset = Math.max(0, parsedOffset)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM users`
+    ).first<any>()
+    const total = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
               COUNT(DISTINCT cp.id) as chat_count
@@ -1400,8 +1425,8 @@ app.get('/api/admin/users', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.owner_user_id = u.id
        GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
        ORDER BY u.created_at DESC
-       LIMIT 1000`
-    ).all<AdminUserRow>()
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<AdminUserRow>()
 
     const users = (result.results || []).map((row) => ({
       id: row.id as string,
@@ -1412,7 +1437,15 @@ app.get('/api/admin/users', async (c) => {
       chat_count: row.chat_count as number,
     }))
 
-    return c.json({ users })
+    return c.json({ 
+      users,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total
+      }
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined
@@ -1475,7 +1508,25 @@ app.get('/api/admin/knowledge', async (c) => {
   const guard = await ensureAdminApiKey(c)
   if (guard) return guard
 
+  const limitParam = c.req.query('limit')
+  const offsetParam = c.req.query('offset')
+
+  const limitNum = parseInt(limitParam || '50', 10)
+  const offsetNum = parseInt(offsetParam || '0', 10)
+  
+  // Validate parsed values
+  const limit = isNaN(limitNum) ? 50 : Math.max(1, Math.min(limitNum, 100))
+  const offset = isNaN(offsetNum) ? 0 : Math.max(0, offsetNum)
+
   try {
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM knowledge_assets`
+    ).first<{ total: number }>()
+    
+    const totalCount = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT ka.id, ka.chat_id, ka.type, ka.title, ka.source_url, ka.original_filename,
               ka.storage_path, ka.status, ka.embedding_count, ka.error_message,
@@ -1486,8 +1537,8 @@ app.get('/api/admin/knowledge', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.id = ka.chat_id
        LEFT JOIN users u ON u.id = cp.owner_user_id
        ORDER BY ka.created_at DESC
-       LIMIT 1000`
-    ).all<AdminKnowledgeAssetRow>()
+       LIMIT ?1 OFFSET ?2`
+    ).bind(limit, offset).all<AdminKnowledgeAssetRow>()
 
     const items = (result.results || []).map((row) => ({
       id: row.id as string,
@@ -1506,7 +1557,15 @@ app.get('/api/admin/knowledge', async (c) => {
       updated_at: row.updated_at as string,
     }))
 
-    return c.json({ items })
+    const nextOffset = offset + limit
+    const hasMore = items.length === limit && nextOffset < totalCount
+
+    return c.json({ 
+      items,
+      totalCount,
+      hasMore,
+      nextOffset
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined

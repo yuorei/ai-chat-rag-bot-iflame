@@ -15,6 +15,18 @@ export type User = {
   chat_count: number;
 };
 
+export type PaginationInfo = {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+export type PaginatedUsersResponse = {
+  users: User[];
+  pagination: PaginationInfo;
+};
+
 export type Chat = {
   id: string;
   target: string;
@@ -54,10 +66,6 @@ export type Stats = {
 async function fetchApi<T>(path: string): Promise<T> {
   const baseUrl = getBaseUrl();
   const apiKey = getApiKey();
-  console.log('[management-api] ベースURL:', baseUrl);
-  console.log('[management-api] fetchApi called for path:', path);
-  console.log('[management-api] MANAGEMENT_API_BASE_URL:', baseUrl ? `${baseUrl.substring(0, 20)}...` : 'NOT SET');
-  console.log('[management-api] MANAGEMENT_API_KEY:', apiKey ? 'SET (hidden)' : 'NOT SET');
 
   if (!baseUrl) {
     throw new Error('MANAGEMENT_API_BASE_URL is not configured');
@@ -83,9 +91,13 @@ async function fetchApi<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getUsers(): Promise<User[]> {
-  const data = await fetchApi<{ users: User[] }>('/api/admin/users');
-  return data.users;
+export async function getUsers(limit?: number, offset?: number): Promise<PaginatedUsersResponse> {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset !== undefined) params.set('offset', offset.toString());
+  
+  const url = `/api/admin/users${params.toString() ? `?${params.toString()}` : ''}`;
+  return await fetchApi<PaginatedUsersResponse>(url);
 }
 
 export async function getChats(): Promise<Chat[]> {
@@ -94,7 +106,7 @@ export async function getChats(): Promise<Chat[]> {
 }
 
 export async function getKnowledge(): Promise<KnowledgeAsset[]> {
-  const data = await fetchApi<{ items: KnowledgeAsset[] }>('/api/admin/knowledge');
+  const data = await fetchApi<{ items: KnowledgeAsset[]; totalCount: number; hasMore: boolean; nextOffset: number }>('/api/admin/knowledge');
   return data.items;
 }
 
