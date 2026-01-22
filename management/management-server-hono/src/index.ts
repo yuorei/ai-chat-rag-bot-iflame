@@ -1306,6 +1306,31 @@ app.get('/api/admin/users', async (c) => {
   if (guard) return guard
 
   try {
+    // Parse pagination parameters
+    const limitParam = c.req.query('limit')
+    const offsetParam = c.req.query('offset')
+    
+    // Set defaults and validate
+    const parsedLimit = limitParam ? parseInt(limitParam, 10) : 100
+    const parsedOffset = offsetParam ? parseInt(offsetParam, 10) : 0
+    
+    if (limitParam && isNaN(parsedLimit)) {
+      return jsonError(c, 400, 'Invalid limit parameter')
+    }
+    if (offsetParam && isNaN(parsedOffset)) {
+      return jsonError(c, 400, 'Invalid offset parameter')
+    }
+    
+    const limit = Math.min(Math.max(1, parsedLimit), 1000)
+    const offset = Math.max(0, parsedOffset)
+
+    // Get total count
+    const countResult = await c.env.DB.prepare(
+      `SELECT COUNT(*) as total FROM users`
+    ).first<any>()
+    const total = countResult?.total || 0
+
+    // Get paginated results
     const result = await c.env.DB.prepare(
       `SELECT u.id, u.email, u.email_verified, u.created_at, u.updated_at,
               COUNT(DISTINCT cp.id) as chat_count
@@ -1313,8 +1338,8 @@ app.get('/api/admin/users', async (c) => {
        LEFT JOIN chat_profiles cp ON cp.owner_user_id = u.id
        GROUP BY u.id, u.email, u.email_verified, u.created_at, u.updated_at
        ORDER BY u.created_at DESC
-       LIMIT 1000`
-    ).all<any>()
+       LIMIT ? OFFSET ?`
+    ).bind(limit, offset).all<any>()
 
     const users = (result.results || []).map((row: any) => ({
       id: row.id as string,
@@ -1325,7 +1350,15 @@ app.get('/api/admin/users', async (c) => {
       chat_count: row.chat_count as number,
     }))
 
-    return c.json({ users })
+    return c.json({ 
+      users,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total
+      }
+    })
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err)
     const errorStack = err instanceof Error ? err.stack : undefined

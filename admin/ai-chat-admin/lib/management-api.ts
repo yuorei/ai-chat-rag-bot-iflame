@@ -15,6 +15,18 @@ export type User = {
   chat_count: number;
 };
 
+export type PaginationInfo = {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+};
+
+export type PaginatedUsersResponse = {
+  users: User[];
+  pagination: PaginationInfo;
+};
+
 export type Chat = {
   id: string;
   target: string;
@@ -79,9 +91,13 @@ async function fetchApi<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function getUsers(): Promise<User[]> {
-  const data = await fetchApi<{ users: User[] }>('/api/admin/users');
-  return data.users;
+export async function getUsers(limit?: number, offset?: number): Promise<PaginatedUsersResponse> {
+  const params = new URLSearchParams();
+  if (limit !== undefined) params.set('limit', limit.toString());
+  if (offset !== undefined) params.set('offset', offset.toString());
+  
+  const url = `/api/admin/users${params.toString() ? `?${params.toString()}` : ''}`;
+  return await fetchApi<PaginatedUsersResponse>(url);
 }
 
 export async function getChats(): Promise<Chat[]> {

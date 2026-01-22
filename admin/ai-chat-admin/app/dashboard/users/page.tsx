@@ -1,16 +1,18 @@
-import { getUsers } from '@/lib/management-api';
+import { getUsers, type PaginatedUsersResponse } from '@/lib/management-api';
 
 export const dynamic = 'force-dynamic';
 
 export default async function UsersPage() {
-  let users: Awaited<ReturnType<typeof getUsers>> = [];
+  let data: PaginatedUsersResponse = { users: [], pagination: { total: 0, limit: 100, offset: 0, hasMore: false } };
   let error: string | null = null;
 
   try {
-    users = await getUsers();
+    data = await getUsers();
   } catch (e) {
     error = e instanceof Error ? e.message : 'Failed to load users';
   }
+
+  const { users, pagination } = data;
 
   return (
     <div>
@@ -91,7 +93,7 @@ export default async function UsersPage() {
           </div>
           <div className="border-t border-zinc-100 px-6 py-3 dark:border-zinc-800">
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
-              合計: {users.length} 件
+              合計: {pagination.total} 件 ({users.length} 件表示)
             </p>
           </div>
         </div>
