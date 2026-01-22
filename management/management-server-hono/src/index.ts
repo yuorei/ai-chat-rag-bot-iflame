@@ -1742,9 +1742,8 @@ async function ensureAuthenticatedUser(c: any): Promise<Response | null> {
       // テーブル不存在エラーのみフラグを立てる（後方互換性）
       const errMsg = (err instanceof Error ? err.message : String(err)).toLowerCase()
       // SQLiteの典型的なテーブル不存在エラーを検出
-      if (errMsg.includes('no such table') || 
-          (errMsg.includes('table') && errMsg.includes('does not exist')) ||
-          (errMsg.includes('table') && errMsg.includes("doesn't exist"))) {
+      const tableNotExistPattern = /no such table|table .* does not exist|table .* doesn't exist/
+      if (tableNotExistPattern.test(errMsg)) {
         usersTableUnavailable = true
         console.warn('Users table does not exist, disabling auto-sync:', err)
       } else {
